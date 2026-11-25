@@ -45,7 +45,6 @@ import {
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
-import { supabase } from '../lib/supabase';
 import {
   initAudioContext,
   startShieldGPS,
@@ -53,6 +52,8 @@ import {
   stopIntenseAlarm,
   destroyShield,
   registerShieldSession,
+  startFakeAlerts,
+  stopFakeAlerts,
 } from '../lib/shield';
 
 const BRAND = {
@@ -182,14 +183,42 @@ export default function NavigationScreen() {
     sessions,
     addSession,
     endSession,
-    fetchAll,
     addWalletTopUp,
     deductWallet,
   } = useStore();
 
-  const garage = garages.find((g) => g.id === selectedGarageId);
   const userPlateNav = normalizePlate(currentUser?.carPlate);
   const userPhoneClean = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
+
+  const fallbackIncomingCar = useMemo(() => {
+    return incomingCars.find(
+      (c) =>
+        (
+          (userPlateNav && normalizePlate(c.carPlate) === userPlateNav) ||
+          (userPhoneClean &&
+            normalizePhone(c.customerPhone || (c as any).userPhone || '') === userPhoneClean)
+        ) &&
+        c.status === 'coming',
+    );
+  }, [incomingCars, userPlateNav, userPhoneClean]);
+
+  const effectiveGarageId = useMemo(() => {
+    if (selectedGarageId) return selectedGarageId;
+    try {
+      const saved = localStorage.getItem('selectedGarageId');
+      if (saved) return saved;
+    } catch {}
+    if (fallbackIncomingCar?.garageId) return fallbackIncomingCar.garageId;
+    return null;
+  }, [selectedGarageId, fallbackIncomingCar]);
+
+  useEffect(() => {
+    if (!selectedGarageId && effectiveGarageId) {
+      setSelectedGarageId(effectiveGarageId);
+    }
+  }, [selectedGarageId, effectiveGarageId, setSelectedGarageId]);
+
+  const garage = garages.find((g) => g.id === effectiveGarageId);
 
   const isVipGarage = useMemo(() => {
     if (!garage) return false;
@@ -200,14 +229,15 @@ export default function NavigationScreen() {
   const myIncomingCar = useMemo(() => {
     return incomingCars.find(
       (c) =>
-        c.garageId === selectedGarageId &&
+        c.garageId === effectiveGarageId &&
         (
           (userPlateNav && normalizePlate(c.carPlate) === userPlateNav) ||
-          (userPhoneClean && normalizePhone(c.customerPhone || '') === userPhoneClean)
+          (userPhoneClean &&
+            normalizePhone(c.customerPhone || (c as any).userPhone || '') === userPhoneClean)
         ) &&
         c.status === 'coming',
     );
-  }, [incomingCars, selectedGarageId, userPlateNav, userPhoneClean]);
+  }, [incomingCars, effectiveGarageId, userPlateNav, userPhoneClean]);
 
   const myActiveSession = useMemo(() => {
     return sessions
@@ -216,7 +246,13 @@ export default function NavigationScreen() {
           sess.status === 'active' &&
           (
             (userPlateNav && normalizePlate(sess.carPlate) === userPlateNav) ||
-            (userPhoneClean && normalizePhone((sess as any).customerPhone || '') === userPhoneClean)
+            (userPhoneClean &&
+              normalizePhone(
+                (sess as any).customerPhone ||
+                  (sess as any).userPhone ||
+                  (sess as any).user_phone ||
+                  '',
+              ) === userPhoneClean)
           ),
       )
       .sort((a, b) => toMs(b.startTime) - toMs(a.startTime))[0];
@@ -229,6 +265,7 @@ export default function NavigationScreen() {
   const [mapReady, setMapReady] = useState(false);
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [processingTopup, setProcessingTopup] = useState<string | null>(null);
+
   const storageTimerKey = garage ? `parkn24_auto_start_timer_${garage.id}` : null;
 
   const [shieldChoice, setShieldChoice] = useState<boolean>(() => {
@@ -273,11 +310,9 @@ export default function NavigationScreen() {
   const isMountedRef = useRef(true);
   const navigatedToSessionRef = useRef(false);
   const isArrivingRef = useRef(false);
-  const realtimeChannelRef = useRef<any>(null);
   const autoStartTriggeredRef = useRef(false);
   const gpsWatchIdRef = useRef<number | null>(null);
   const stabilityTickerRef = useRef<number | null>(null);
-  const lastSyncTimeRef = useRef<number>(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -292,108 +327,39 @@ export default function NavigationScreen() {
     } catch {}
   }, [shieldChoice]);
 
-  /* ─── REALTIME & SYNC ─── */
-  useEffect(() => {
-    if (!userPlateNav && !userPhoneClean) return;
-    let cancelled = false;
-
-    const fastFetchThrottled = async () => {
-      const now = Date.now();
-      if (now - lastSyncTimeRef.current < 1500) return;
-      lastSyncTimeRef.current = now;
-      if (cancelled || !isMountedRef.current) return;
-      try {
-        await fetchAll();
-      } catch (e) {
-        console.error('Fetch error:', e);
-      }
-    };
-
-    fastFetchThrottled();
-
-    const isMySessionPayload = (row: any): boolean => {
-      if (!row) return false;
-      const plate = normalizePlate(row.car_plate || row.carPlate);
-      const phone = normalizePhone(row.customer_phone || row.customerPhone || '');
-      return (
-        (!!userPlateNav && plate === userPlateNav) ||
-        (!!userPhoneClean && phone === userPhoneClean)
-      );
-    };
-
-    const channel = supabase.channel(`instant-nav-${userPlateNav || userPhoneClean}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        async (payload) => {
-          const newRow = payload.new as any;
-          const oldRow = payload.old as any;
-          if (isMySessionPayload(newRow) && newRow?.status === 'active') {
-            await fastFetchThrottled();
-            if (isMountedRef.current) {
-              if (newRow.garage_id || newRow.garageId) {
-                setSelectedGarageId(newRow.garage_id || newRow.garageId);
-              }
-              setScreen('session');
-            }
-          } else if (isMySessionPayload(newRow) || isMySessionPayload(oldRow)) {
-            fastFetchThrottled();
-          }
-        },
-      )
-      .subscribe();
-
-    realtimeChannelRef.current = channel;
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fastFetchThrottled();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleVisibility);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleVisibility);
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
-  }, [userPlateNav, userPhoneClean, fetchAll, setScreen, setSelectedGarageId]);
-
   /* ─── 🚗 زر: وصلت للجراج وبدأ الركن (مفحوص بدقة مع إصلاح سعر الساعة) ─── */
   const handleCarArrived = useCallback(async () => {
     if (isArrivingRef.current || autoStartTriggeredRef.current) return;
     isArrivingRef.current = true;
-
     try {
       if (!garage) return;
       if (storageTimerKey) {
         try { localStorage.removeItem(storageTimerKey); } catch {}
       }
-
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
         (s) =>
           s.status === 'active' &&
           (
             normalizePlate(s.carPlate) === userPlateNav ||
-            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
+            (userPhoneClean &&
+              normalizePhone(
+                (s as any).customerPhone ||
+                  (s as any).userPhone ||
+                  (s as any).user_phone ||
+                  '',
+              ) === userPhoneClean)
           ),
       );
-
       if (alreadyActive) {
         if (myIncomingCar) await removeIncomingCar(myIncomingCar.id);
-        if (alreadyActive.garageId !== selectedGarageId) {
+        if (alreadyActive.garageId !== effectiveGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
         }
         navigatedToSessionRef.current = true;
         setScreen('session');
         return;
       }
-
       if (myIncomingCar) {
         const relatedOffer = offers.find(
           (o) =>
@@ -402,11 +368,9 @@ export default function NavigationScreen() {
         );
         if (relatedOffer) cancelOffer(relatedOffer.id);
       }
-
       const startTimeISO = new Date(getServerNow()).toISOString();
       const currentDistMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
       let shieldCostForSession = 0;
-
       if (shieldChoice) {
         if (currentDistMeters > AUTO_START_RADIUS_M) {
           toast.error(`عفواً! أنت خارج نطاق الجراج (أكثر من ${AUTO_START_RADIUS_M}م) — تم بدء الجلسة بدون تفعيل الدرع 🛡️`, {
@@ -433,7 +397,6 @@ export default function NavigationScreen() {
           }
         }
       }
-
       // 💰 إصلاح ثغرة الإيرادات: فحص السعر المتفق عليه أو السعر الأساسي للجراج (basePrice / pricePerHour)
       const agreedNum = Number(myIncomingCar?.agreedPrice);
       const garageRateNum = Number(
@@ -443,7 +406,6 @@ export default function NavigationScreen() {
         15
       );
       const resolvedPricePerHour = agreedNum > 0 ? agreedNum : (garageRateNum > 0 ? garageRateNum : 15);
-
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
@@ -453,6 +415,7 @@ export default function NavigationScreen() {
         status: 'active',
         source: 'app',
         agreedPrice: resolvedPricePerHour,
+        userPhone: currentUser?.phone,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
@@ -461,11 +424,9 @@ export default function NavigationScreen() {
         shieldAutoEnabled: shieldCostForSession > 0,
         shieldCost: shieldCostForSession,
       } as any);
-
       if (myIncomingCar) {
         await removeIncomingCar(myIncomingCar.id);
       }
-
       useStore.getState().setHasPaidBookingFee(false);
       navigatedToSessionRef.current = true;
       toast.success('تم الوصول للجراج وبدأت الجلسة بنجاح ⏱️', { duration: 3000 });
@@ -491,7 +452,7 @@ export default function NavigationScreen() {
     removeIncomingCar,
     deductWallet,
     shieldChoice,
-    selectedGarageId,
+    effectiveGarageId,
     setSelectedGarageId,
     setScreen,
     storageTimerKey,
@@ -521,11 +482,9 @@ export default function NavigationScreen() {
     if (autoStartTriggeredRef.current || isArrivingRef.current || !garage || !isMountedRef.current) return;
     autoStartTriggeredRef.current = true;
     setAutoStarting(true);
-
     if (storageTimerKey) {
       try { localStorage.removeItem(storageTimerKey); } catch {}
     }
-
     try {
       const state = useStore.getState();
       const alreadyActive = state.sessions.find(
@@ -533,23 +492,26 @@ export default function NavigationScreen() {
           s.status === 'active' &&
           (
             normalizePlate(s.carPlate) === userPlateNav ||
-            (userPhoneClean && normalizePhone((s as any).customerPhone || '') === userPhoneClean)
+            (userPhoneClean &&
+              normalizePhone(
+                (s as any).customerPhone ||
+                  (s as any).userPhone ||
+                  (s as any).user_phone ||
+                  '',
+              ) === userPhoneClean)
           ),
       );
-
       if (alreadyActive) {
-        if (alreadyActive.garageId !== selectedGarageId) {
+        if (alreadyActive.garageId !== effectiveGarageId) {
           setSelectedGarageId(alreadyActive.garageId);
         }
         navigatedToSessionRef.current = true;
         setScreen('session');
         return;
       }
-
       const startTimeISO = new Date(getServerNow()).toISOString();
       const currentDistMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
       let shieldCostForSession = 0;
-
       if (shieldChoice && currentDistMeters <= AUTO_START_LEAVE_RADIUS_M) {
         const walletNow = Number(currentUser?.wallet ?? (currentUser as any)?.walletBalance ?? 0);
         if (walletNow >= SHIELD_AUTO_FEE) {
@@ -570,7 +532,6 @@ export default function NavigationScreen() {
           toast.error(`رصيد غير كافٍ لتفعيل الدرع (${SHIELD_AUTO_FEE} ج.م) — تم بدء الجلسة بدون درع`, { duration: 3500 });
         }
       }
-
       // 💰 إصلاح ثغرة الإيرادات في البدء التلقائي:
       const agreedNum = Number(myIncomingCar?.agreedPrice);
       const garageRateNum = Number(
@@ -580,7 +541,6 @@ export default function NavigationScreen() {
         15
       );
       const resolvedPricePerHour = agreedNum > 0 ? agreedNum : (garageRateNum > 0 ? garageRateNum : 15);
-
       await addSession({
         garageId: garage.id,
         carPlate: myIncomingCar?.carPlate || currentUser?.carPlate || '---',
@@ -590,6 +550,7 @@ export default function NavigationScreen() {
         status: 'active',
         source: 'app',
         agreedPrice: resolvedPricePerHour,
+        userPhone: currentUser?.phone,
         customerPhone: currentUser?.phone,
         customerName: currentUser?.name,
         startedBy: 'customer',
@@ -598,11 +559,9 @@ export default function NavigationScreen() {
         shieldAutoEnabled: shieldCostForSession > 0,
         shieldCost: shieldCostForSession,
       } as any);
-
       if (myIncomingCar) {
         try { await removeIncomingCar(myIncomingCar.id); } catch {}
       }
-
       useStore.getState().setHasPaidBookingFee(false);
       navigatedToSessionRef.current = true;
       const msg = shieldCostForSession > 0
@@ -623,7 +582,7 @@ export default function NavigationScreen() {
     shieldChoice,
     userPlateNav,
     userPhoneClean,
-    selectedGarageId,
+    effectiveGarageId,
     currentUser,
     myIncomingCar,
     addSession,
@@ -637,6 +596,7 @@ export default function NavigationScreen() {
   /* ─── 🚨 إنهاء الجلسة من شاشة اختراق الدرع مع حساب التكلفة الفعلية ─── */
   const handleBreachEndSession = useCallback(async () => {
     stopIntenseAlarm();
+    stopFakeAlerts();
     setShowBreach(false);
     destroyShield();
     if (myActiveSession) {
@@ -680,13 +640,11 @@ export default function NavigationScreen() {
   useEffect(() => {
     if (!garage || !('geolocation' in navigator)) return;
     if (myActiveSession) return;
-
     const watchId = navigator.geolocation.watchPosition(
       (p) => {
         if (!isMountedRef.current) return;
         const newLat = p.coords.latitude;
         const newLng = p.coords.longitude;
-
         setUserPos((prev) => {
           // فلترة التذبذب: لا نُحدّث الحالة إلا إذا تحركت السيارة 3 أمتار حقيقية
           const moveDelta = haversineMeters(prev.lat, prev.lng, newLat, newLng);
@@ -703,7 +661,6 @@ export default function NavigationScreen() {
         timeout: 10000,
       }
     );
-
     gpsWatchIdRef.current = watchId;
     return () => {
       if (gpsWatchIdRef.current !== null) {
@@ -716,10 +673,8 @@ export default function NavigationScreen() {
   /* 🎯 مراقبة ثبات السيارة داخل النطاق مع Hysteresis لمنع التصفير المفاجئ */
   useEffect(() => {
     if (!garage || myActiveSession || autoStartTriggeredRef.current) return;
-
     const distMeters = haversineMeters(userPos.lat, userPos.lng, garage.lat, garage.lng);
     const within = distMeters <= AUTO_START_RADIUS_M;
-
     if (within) {
       setIsWithinRadius(true);
       if (stabilityStartMs === null) {
@@ -751,12 +706,10 @@ export default function NavigationScreen() {
       }
       return;
     }
-
     const checkAndTick = () => {
       if (!isMountedRef.current) return;
       const elapsed = Date.now() - stabilityStartMs;
       setStabilityElapsed(elapsed);
-
       if (elapsed >= AUTO_START_STABILITY_MS && !autoStartTriggeredRef.current) {
         if (storageTimerKey) {
           try { localStorage.removeItem(storageTimerKey); } catch {}
@@ -764,17 +717,13 @@ export default function NavigationScreen() {
         handleAutoStartSession();
       }
     };
-
     checkAndTick();
     stabilityTickerRef.current = window.setInterval(checkAndTick, 1000);
-
     const handleVisibilityOrFocus = () => {
       checkAndTick();
     };
-
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
-
     return () => {
       if (stabilityTickerRef.current !== null) {
         window.clearInterval(stabilityTickerRef.current);
@@ -801,32 +750,36 @@ export default function NavigationScreen() {
     }
     if (navigatedToSessionRef.current) return;
     navigatedToSessionRef.current = true;
-    if (myActiveSession.garageId !== selectedGarageId) {
+    if (myActiveSession.garageId !== effectiveGarageId) {
       setSelectedGarageId(myActiveSession.garageId);
     }
     setScreen('session');
-  }, [myActiveSession, selectedGarageId, setSelectedGarageId, setScreen]);
+  }, [myActiveSession, effectiveGarageId, setSelectedGarageId, setScreen]);
 
   // ═══════════════════════════════════════════════════════════
-  // ✅ تفعيل الدرع الذكي تلقائياً
+  // ✅ تفعيل الدرع الذكي تلقائياً (في حال البقاء على شاشة التوجيه)
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     if (!myActiveSession || !garage) return;
+    if (navigatedToSessionRef.current) return;
     if ((myActiveSession.shieldCost ?? 0) <= 0) return;
-
     try { initAudioContext(); } catch {}
     const lat = (garage as any).lat ?? 30.0444;
     const lng = (garage as any).lng ?? 31.2357;
     let cancelled = false;
-
     registerShieldSession({
       sessionId: myActiveSession.id,
-      phone: (myActiveSession as any).customerPhone || currentUser?.phone || '',
+      phone:
+        (myActiveSession as any).customerPhone ||
+        (myActiveSession as any).userPhone ||
+        currentUser?.phone ||
+        '',
       garageId: garage.id,
       parkingLat: lat,
       parkingLng: lng,
     }).then((shieldId) => {
       if (cancelled || !shieldId) return;
+      startFakeAlerts();
       startShieldGPS({
         sessionId: myActiveSession.id,
         shieldId,
@@ -838,10 +791,12 @@ export default function NavigationScreen() {
         },
       });
     });
-
     return () => {
       cancelled = true;
-      destroyShield();
+      if (!navigatedToSessionRef.current) {
+        stopFakeAlerts();
+        destroyShield();
+      }
       setShowBreach(false);
     };
   }, [myActiveSession?.id, garage?.id, currentUser?.phone]);
@@ -1093,7 +1048,6 @@ export default function NavigationScreen() {
                 {SHIELD_AUTO_FEE} ج.م
               </span>
             </div>
-
             <div className="grid grid-cols-2 gap-1.5 mb-2">
               <button
                 type="button"
@@ -1127,7 +1081,6 @@ export default function NavigationScreen() {
                 ❌ بدون درع
               </button>
             </div>
-
             {/* بطاقة فحص القرب والرادار الجغرافي */}
             <div
               className="rounded-xl p-2 border text-right"
@@ -1291,7 +1244,6 @@ export default function NavigationScreen() {
                 وصلت للجراج وبدأ الركن ✅
               </span>
             </button>
-
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -1307,7 +1259,6 @@ export default function NavigationScreen() {
                   ملقتش مكان ❌
                 </span>
               </button>
-
               <button
                 type="button"
                 onClick={handleNoSpaceFound}
@@ -1352,7 +1303,6 @@ export default function NavigationScreen() {
                   اختر باقة شحن سريعة للمتابعة
                 </p>
               </div>
-
               <div className="grid grid-cols-2 gap-2">
                 {[...TOPUP_TIERS].reverse().map((tier) => (
                   <button
@@ -1367,7 +1317,6 @@ export default function NavigationScreen() {
                   </button>
                 ))}
               </div>
-
               <button
                 onClick={() => setShowInsufficientModal(false)}
                 className="w-full py-2 rounded-xl text-xs font-black text-slate-400 border border-slate-700 bg-transparent"
@@ -1401,7 +1350,6 @@ export default function NavigationScreen() {
             <p className="text-sm text-gray-300 mb-6 leading-relaxed">
               سيارتك خرجت من نطاق الأمان حول الجراج
             </p>
-
             <div className="flex flex-col gap-3">
               <button
                 onClick={handleBreachEndSession}
@@ -1413,7 +1361,6 @@ export default function NavigationScreen() {
               >
                 ✅ أنا اللي سايق
               </button>
-
               <button
                 onClick={handleBreachEndSession}
                 className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all"

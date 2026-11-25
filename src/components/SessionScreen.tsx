@@ -23,6 +23,8 @@ import {
   armBackgroundAudio,
   startShieldGPS,
   stopShieldGPS,
+  startFakeAlerts,
+  stopFakeAlerts,
   triggerBreachAlarm,
   stopIntenseAlarm,
   destroyShield,
@@ -82,7 +84,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
 }) {
   const formattedLat = displayLat ? `LAT ${displayLat.toFixed(4)}°` : 'GPS LOCKING...';
   const formattedLng = displayLng ? `LNG ${displayLng.toFixed(4)}°` : 'CALIBRATING...';
-
   return (
     <div
       className={`relative w-64 h-64 my-1 flex items-center justify-center rounded-full transition-all duration-700 ${
@@ -122,7 +123,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
           <div className="w-full h-[1px] bg-red-500/20 -rotate-45" />
         </div>
       )}
-
       {/* 4. نقطة الهدف: العربية في المركز */}
       <div className="relative z-10 flex flex-col items-center justify-center">
         <div className="relative flex items-center justify-center">
@@ -150,7 +150,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
             </span>
           )}
         </div>
-
         {/* بادج حالة القفل وتأمين النطاق */}
         <div
           className={`mt-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border shadow-md ${
@@ -169,7 +168,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
           </span>
         </div>
       </div>
-
       {/* 5. علامات المدى التكتيكية الحقيقية */}
       <div className={`absolute top-2 font-mono text-[8px] font-bold tracking-widest ${isShieldActive ? 'text-sky-400/80' : 'text-slate-600'}`}>
         {formattedLat}
@@ -208,13 +206,10 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       return;
     }
     autoEndedRef.current = false;
-
     const calcElapsed = () =>
       Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
-
     const currentElapsed = calcElapsed();
     setElapsed(currentElapsed);
-
     if (currentElapsed >= AUTO_END_SECONDS) {
       if (!autoEndedRef.current) {
         autoEndedRef.current = true;
@@ -222,7 +217,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       }
       return;
     }
-
     const interval = setInterval(() => {
       const current = calcElapsed();
       setElapsed(current);
@@ -243,10 +237,8 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         onAutoEndRef.current();
       }
     };
-
     document.addEventListener('visibilitychange', handleSync);
     window.addEventListener('focus', handleSync);
-
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleSync);
@@ -321,6 +313,7 @@ export default function SessionScreen() {
   const [ending, setEnding] = useState(false);
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
   const [showBreach, setShowBreach] = useState(false);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -329,9 +322,10 @@ export default function SessionScreen() {
     };
   }, []);
 
+  // ⚡ جلب محمي لتخفيف الضغط على السيرفر (بحد أقصى مرة كل 15 ثانية عند الحاجة)
   const throttledFetchAll = useCallback(async () => {
     const now = Date.now();
-    if (now - lastFetchTimeRef.current < 3500) {
+    if (now - lastFetchTimeRef.current < 15000) {
       return;
     }
     lastFetchTimeRef.current = now;
@@ -340,20 +334,14 @@ export default function SessionScreen() {
       await fetchAll();
     } catch (e) {
       console.error('❌ Throttled fetch error:', e);
+    } finally {
+      if (isMountedRef.current) {
+        setInitialCheckDone(true);
+      }
     }
   }, [fetchAll]);
 
-  const isMySessionRow = useCallback((row: any) => {
-    if (!row) return false;
-    const rowPlate = normalizePlate(row.car_plate || row.carPlate);
-    const rowPhone = normalizePhone(row.customer_phone || row.customerPhone || '');
-    return (
-      (!!userPlate && rowPlate === userPlate) ||
-      (!!userPhone && rowPhone === userPhone)
-    );
-  }, [userPlate, userPhone]);
-
-  // استخراج الجلسة النشطة بدقة مع استبعاد أي جلسة تم إنهاؤها محلياً فوراً
+  // استخراج الجلسة النشطة بدقة (يدعم customerPhone و userPhone و carPlate)
   const activeSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
     let maxStart = -1;
@@ -363,7 +351,8 @@ export default function SessionScreen() {
       if (endedSessionId === s.id) continue;
       if (acknowledgedSessionIds?.has(s.id)) continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const rawPhone = (s as any).customerPhone || (s as any).userPhone || (s as any).user_phone || '';
+      const sPhone = rawPhone ? normalizePhone(rawPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
       if (!(samePlate || samePhone)) continue;
       const startMs = safeParseTime(s.startTime);
@@ -382,7 +371,8 @@ export default function SessionScreen() {
       const s = sessions[i];
       if (!s || s.status !== 'completed') continue;
       const samePlate = !!userPlate && normalizePlate(s.carPlate) === userPlate;
-      const sPhone = (s as any).customerPhone ? normalizePhone((s as any).customerPhone) : '';
+      const rawPhone = (s as any).customerPhone || (s as any).userPhone || (s as any).user_phone || '';
+      const sPhone = rawPhone ? normalizePhone(rawPhone) : '';
       const samePhone = Boolean(userPhone && sPhone === userPhone);
       if (!(samePlate || samePhone)) continue;
       const endMs = safeParseTime(s.endTime);
@@ -407,40 +397,24 @@ export default function SessionScreen() {
 
   useEffect(() => {
     throttledFetchAll();
+    const timer = setTimeout(() => {
+      if (isMountedRef.current) setInitialCheckDone(true);
+    }, 1800);
+    return () => clearTimeout(timer);
   }, [throttledFetchAll]);
 
-  // Realtime Listener مستقر وبدون تسريب قنوات
+  // مزامنة خفيفة عند فتح قفل الشاشة بدون إنشاء قنوات Realtime مكررة (لأن store.ts يحدث الجلسات لحظياً في الذاكرة)
   useEffect(() => {
-    if (!userPlate && !userPhone) return;
-    let isSubscribed = true;
-    const channelName = `session-live-${userPlate || userPhone}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload) => {
-        if (!isSubscribed) return;
-        const newRow = payload.new as any;
-        const oldRow = payload.old as any;
-        if (isMySessionRow(newRow) || isMySessionRow(oldRow)) {
-          throttledFetchAll();
-        }
-      })
-      .subscribe();
-
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         throttledFetchAll();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleVisibility);
-
     return () => {
-      isSubscribed = false;
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleVisibility);
-      supabase.removeChannel(channel);
     };
-  }, [userPlate, userPhone, throttledFetchAll, isMySessionRow]);
+  }, [throttledFetchAll]);
 
   // ═══════════════════════════════════════════════════════════
   // 📍 استخراج إحداثيات الجراج الحقيقية
@@ -476,24 +450,32 @@ export default function SessionScreen() {
     };
   }, [isShieldPurchased]);
 
-  // 🛡️ تشغيل رادار الـ GPS فقط عند توفر إحداثيات حقيقية صحيحة
+  // 🛡️ تشغيل رادار الـ GPS + بنك الإشعارات التكتيكي (كل 30 دقيقة للعميل فقط)
   useEffect(() => {
     if (!shieldSessionId || !garageId || !isShieldPurchased) return;
     if (!accurateLat || !accurateLng) return;
+
     armBackgroundAudio();
     let cancelled = false;
 
+    const cleanupFakeAlerts = startFakeAlerts((alert) => {
+      toast(alert.body, {
+        icon: '🛡️',
+        duration: 5000,
+      });
+    });
+
     registerShieldSession({
       sessionId: shieldSessionId,
-      phone: (activeSession as any)?.customerPhone || userPhone || '',
+      phone: (activeSession as any)?.customerPhone || (activeSession as any)?.userPhone || userPhone || '',
       garageId: garageId,
       parkingLat: accurateLat,
       parkingLng: accurateLng,
     }).then((shieldId) => {
-      if (cancelled || !shieldId) return;
+      if (cancelled) return;
       startShieldGPS({
         sessionId: shieldSessionId,
-        shieldId,
+        shieldId: shieldId || undefined,
         parkingLat: accurateLat,
         parkingLng: accurateLng,
         onGeofenceBreach: () => {
@@ -505,32 +487,31 @@ export default function SessionScreen() {
 
     return () => {
       cancelled = true;
+      cleanupFakeAlerts();
+      stopFakeAlerts();
       stopShieldGPS();
       destroyShield();
       setShowBreach(false);
     };
-  }, [shieldSessionId, garageId, isShieldPurchased, accurateLat, accurateLng, userPhone]);
+  }, [shieldSessionId, garageId, isShieldPurchased, accurateLat, accurateLng, userPhone, activeSession]);
 
   // 🏁 إنهاء الجلسة الفوري مع حساب الإيرادات الدقيق والتخلص من ثغرة تمرير الثواني مكان السعر
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
     const currentSessionId = activeSession.id;
-
     // 1. إيقاف فوري للرادار والإنذار في المتصفح في (0 ثانية)
     stopIntenseAlarm();
+    stopFakeAlerts();
     destroyShield();
     setShowBreach(false);
     setEndedSessionId(currentSessionId);
     setEnding(true);
-
     // 2. تحديث الـ Store الداخلي فوراً قبل انتظار السيرفر لمنع رجوع "جلسة نشطة"
     if (typeof acknowledgeSession === 'function') {
       acknowledgeSession(currentSessionId);
     }
-
     try {
       const elapsedSec = Math.max(0, Math.floor((getServerNow() - activeStartMs) / 1000));
-
       // 💰 حساب الإيراد الفعلي الصحيح مع مراعاة الـ 30 دقيقة المجانية للجلسة الأولى
       const isFreeSession = Boolean(
         activeSession.isFirstFreeSession ??
@@ -551,10 +532,8 @@ export default function SessionScreen() {
       const freeMinutesApplied = isFreeSession
         ? (elapsedSec <= 1800 ? Math.floor(elapsedSec / 60) : 30)
         : 0;
-
       // ✅ المعامل الثاني: totalPrice بالجنيه | المعامل الرابع: freeMinutesApplied بالدقائق
       await endSession(currentSessionId, totalSessionCost, 'cash', freeMinutesApplied);
-
       const nowIso = new Date().toISOString();
       const shieldUpdates: PromiseLike<any>[] = [
         supabase
@@ -563,7 +542,6 @@ export default function SessionScreen() {
           .eq('session_id', currentSessionId)
           .is('ended_at', null),
       ];
-
       if (userPhone) {
         shieldUpdates.push(
           supabase
@@ -574,9 +552,7 @@ export default function SessionScreen() {
             .is('session_id', null)
         );
       }
-
       await Promise.all(shieldUpdates);
-
       toast.success('تم إنهاء الجلسة بنجاح ✅', { icon: '🏁', duration: 3000 });
       setSelectedGarageId(null);
       setScreen('list');
@@ -593,6 +569,7 @@ export default function SessionScreen() {
   // 🚨 معالج إيقاف الإنذار عند الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
     stopIntenseAlarm();
+    stopFakeAlerts();
     destroyShield();
     setShowBreach(false);
     if (isDriver) {
@@ -608,10 +585,10 @@ export default function SessionScreen() {
     if (autoEndedRef.current || !activeSession) return;
     autoEndedRef.current = true;
     stopIntenseAlarm();
+    stopFakeAlerts();
     destroyShield();
     setShowBreach(false);
     setEndedSessionId(activeSession.id);
-
     try {
       const isFreeSession = Boolean(
         activeSession.isFirstFreeSession ??
@@ -630,16 +607,13 @@ export default function SessionScreen() {
       const pricing = calculateCostWithLoyalty(AUTO_END_SECONDS, pricePerHour, isFreeSession);
       const totalSessionCost = pricing.cost;
       const freeMinutesApplied = isFreeSession ? 30 : 0;
-
       // ✅ المعامل الثاني: totalPrice بالجنيه | المعامل الرابع: freeMinutesApplied بالدقائق
       await endSession(activeSession.id, totalSessionCost, 'cash', freeMinutesApplied);
-
       const nowIso = new Date().toISOString();
       await supabase.from('shield_sessions')
         .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
         .eq('session_id', activeSession.id)
         .is('ended_at', null);
-
       if (typeof acknowledgeSession === 'function') acknowledgeSession(activeSession.id);
       toast.success('تم إنهاء الجلسة تلقائياً (6 ساعات) ⏰', { duration: 5000 });
       setSelectedGarageId(null);
@@ -658,18 +632,18 @@ export default function SessionScreen() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // تحويل للقائمة لو مفيش جلسة
+  // تحويل للقائمة فقط بعد التأكد الفعلي من عدم وجود جلسة نشطة (لمنع طرد العميل عند قفل وفتح التطبيق)
   useEffect(() => {
+    if (!initialCheckDone) return;
     if (!activeSession && !ending) {
       setSelectedGarageId(null);
       setScreen('list');
     }
-  }, [activeSession, ending, setSelectedGarageId, setScreen]);
+  }, [initialCheckDone, activeSession, ending, setSelectedGarageId, setScreen]);
 
   if (activeSession) {
     const isShieldActive = (activeSession.shieldCost ?? 0) > 0;
     const currentPlate = activeSession.carPlate || currentUser?.carPlate || '---';
-
     return (
       <motion.div
         className="h-full flex flex-col bg-slate-950 text-white overflow-hidden"
@@ -687,7 +661,6 @@ export default function SessionScreen() {
             100% { transform: scale(1.6); opacity: 0; }
           }
         `}</style>
-
         <div className="flex-1 flex flex-col items-center px-4 pt-2.5 pb-2 gap-2 overflow-y-auto">
           {/* بادج حالة الجلسة والتأمين في الرأس */}
           {isShieldActive ? (
@@ -811,7 +784,6 @@ export default function SessionScreen() {
                 {currentPlate}
               </div>
             </div>
-
             {garage && (
               <div
                 className="border rounded-xl p-2 text-center"
@@ -900,7 +872,6 @@ export default function SessionScreen() {
               <p className="text-sm font-bold text-gray-200 mb-4 leading-relaxed">
                 رصد رادار الحماية خروج سيارتك خارج نطاق الأمان (50 متر) أو حركتها بسرعة عالية!
               </p>
-
               <button
                 type="button"
                 onClick={() => stopIntenseAlarm()}
@@ -909,7 +880,6 @@ export default function SessionScreen() {
                 <VolumeX size={15} className="text-amber-400" />
                 <span>كتم صوت الإنذار مؤقتاً</span>
               </button>
-
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleBreachAction(true)}
@@ -921,7 +891,6 @@ export default function SessionScreen() {
                 >
                   ✅ أنا اللي سايق
                 </button>
-
                 <button
                   onClick={() => handleBreachAction(false)}
                   className="w-full py-3.5 rounded-xl font-black text-white text-sm active:scale-95 transition-all cursor-pointer"

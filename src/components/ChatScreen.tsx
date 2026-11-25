@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useStore, getServerNow, normalizePhone, UserMessage } from '../store';
 import toast from 'react-hot-toast';
-
 /* ─── 🎨 الألوان الرسمية للتطبيق ─── */
 const BRAND = {
   blue: '#1656b8',
@@ -27,44 +26,38 @@ const BRAND = {
   slateMuted: '#94a3b8',
   border: 'rgba(255, 255, 255, 0.08)',
 };
-
 const MESSAGE_TYPES = [
   { id: 'complaint', label: 'شكوى', icon: AlertTriangle },
   { id: 'inquiry', label: 'استفسار', icon: HelpCircle },
   { id: 'suggestion', label: 'اقتراح', icon: Lightbulb },
   { id: 'technical', label: 'مشكلة تقنية', icon: Wrench },
 ];
-
 const MESSAGE_TYPE_LABELS: Record<string, string> = {
   complaint: 'شكوى',
   inquiry: 'استفسار',
   suggestion: 'اقتراح',
   technical: 'مشكلة تقنية',
 };
-
 const getTypeLabel = (typeId: string) => {
   return MESSAGE_TYPE_LABELS[typeId] || 'رسالة';
 };
-
 const formatTime = (timestamp: number) => {
-  const diffMins = Math.floor((getServerNow() - timestamp) / 60000);
+  const safeTs = Number(timestamp) || getServerNow();
+  const diffMins = Math.floor((getServerNow() - safeTs) / 60000);
   if (diffMins < 1) return 'الآن';
   if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
   if (diffMins < 1440) return `منذ ${Math.floor(diffMins / 60)} ساعة`;
-  return new Date(timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' });
+  return new Date(safeTs).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' });
 };
-
 interface MessageCardProps {
   msg: UserMessage;
   isSelected: boolean;
   onSelect: (id: string, isExpanded: boolean, hasReply: boolean) => void;
 }
-
 const MessageCard = React.memo(({ msg, isSelected, onSelect }: MessageCardProps) => {
   // 🌟 التحقق الذكي: لو في نص للرد موجود فعلياً إذن تم الرد!
   const hasReply = Boolean(msg.reply && msg.reply.trim().length > 0);
   const isExpanded = isSelected || hasReply;
-
   return (
     <div
       onClick={() => onSelect(msg.id, isExpanded, hasReply)}
@@ -108,43 +101,41 @@ const MessageCard = React.memo(({ msg, isSelected, onSelect }: MessageCardProps)
     </div>
   );
 });
-
 export default function ChatScreen() {
   const currentUser = useStore((s) => s.currentUser);
   const messages = useStore((s) => s.messages);
   const addMessage = useStore((s) => s.addMessage);
   const setScreen = useStore((s) => s.setScreen);
-
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
-
+  const sendingLockRef = useRef(false);
   const userPhoneClean = useMemo(
     () => (currentUser?.phone ? normalizePhone(currentUser.phone) : ''),
     [currentUser?.phone]
   );
-
   // 🔄 جلب رسائل المستخدم الحالية مرتبة من الأحدث للأقدم
   const myMessages = useMemo(() => {
     if (!userPhoneClean || !messages || messages.length === 0) return [];
     return messages
       .filter((m) => {
-        const msgPhone = m.userPhone ? normalizePhone(m.userPhone) : '';
+        const rawPhone = m.userPhone || (m as any).user_phone || (m as any).customerPhone || '';
+        const msgPhone = rawPhone ? normalizePhone(rawPhone) : '';
         return msgPhone === userPhoneClean;
       })
-      .sort((a, b) => b.timestamp - a.timestamp);
+      .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0));
   }, [messages, userPhoneClean]);
-
   const handleSelectMessage = useCallback((id: string, isExpanded: boolean, hasReply: boolean) => {
     setSelectedMessage(isExpanded && !hasReply ? null : id);
   }, []);
-
   const handleSend = async () => {
+    if (sendingLockRef.current || sending) return;
     if (!currentUser) return toast.error('سجل دخول أولاً');
     if (!selectedType) return toast.error('اختر نوع الرسالة');
     if (!messageText.trim()) return toast.error('اكتب رسالتك');
+    sendingLockRef.current = true;
     setSending(true);
     try {
       const result = await addMessage({
@@ -166,9 +157,9 @@ export default function ChatScreen() {
       toast.error('حدث خطأ أثناء الإرسال');
     } finally {
       setSending(false);
+      sendingLockRef.current = false;
     }
   };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -190,7 +181,6 @@ export default function ChatScreen() {
         </h2>
         <div className="w-10" />
       </div>
-
       {/* ══ المحتوى ══ */}
       <div className="flex-1 px-4 py-4 overflow-y-auto space-y-4">
         {!showNewMessage && (
@@ -205,7 +195,6 @@ export default function ChatScreen() {
             تواصل مع الإدارة
           </motion.button>
         )}
-
         {/* نموذج الإرسال */}
         <AnimatePresence>
           {showNewMessage && (
@@ -266,13 +255,11 @@ export default function ChatScreen() {
             </motion.div>
           )}
         </AnimatePresence>
-
         {/* ══ سجل الرسائل والردود ══ */}
         <div className="space-y-3 pb-6">
           <h3 className="text-xs font-bold px-1" style={{ color: BRAND.slateMuted }}>
             سجل المراسلات ({myMessages.length})
           </h3>
-
           {myMessages.length === 0 ? (
             <div className="text-center py-10 opacity-50">
               <MessageCircle size={32} className="mx-auto mb-2 text-slate-500" />

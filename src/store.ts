@@ -230,11 +230,9 @@ const isSupabaseConfigured = () => {
 const safeSetStorage = (key: string, value: unknown) => {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 };
-
 const safeRemoveStorage = (key: string) => {
   try { localStorage.removeItem(key); } catch {}
 };
-
 const safeGetStorage = (key: string) => {
   try { const item = localStorage.getItem(key); return item ? JSON.parse(item) : null; } catch { return null; }
 };
@@ -243,6 +241,20 @@ const getCachedGarages = (): Garage[] => {
   const cached = safeGetStorage('cached_garages_v2');
   return Array.isArray(cached) ? cached : [];
 };
+
+const getCachedSessions = (): ParkingSession[] => {
+  const cached = safeGetStorage('cached_user_sessions_v2');
+  return Array.isArray(cached) ? cached : [];
+};
+
+const getCachedIncomingCars = (): IncomingCar[] => {
+  const cached = safeGetStorage('cached_incoming_cars_v2');
+  return Array.isArray(cached) ? cached : [];
+};
+
+const PERSISTENT_USER_SCREENS = new Set<ScreenType>([
+  'list', 'waiting', 'navigation', 'session', 'lastSession', 'chat'
+]);
 
 // ⚡ تحسين فائق السرعة لدالة getPlateFingerprint و normalizePhone مع كاش O(1) لمنع تجميد الموبايل والـ CPU
 const enToArMap: Record<string, string> = {
@@ -261,18 +273,14 @@ export const getPlateFingerprint = (plate?: any): string => {
   const raw = String(plate);
   const cached = plateFingerprintCache.get(raw);
   if (cached !== undefined) return cached;
-
   let str = raw.trim();
   if (!str) return '';
-
   // إزالة المسافات الصفرية والتطويل والتشكيل
   str = str.replace(/[\u200B-\u200D\uFEFF\u00A0\u0640]/g, '');
   str = str.normalize('NFKD');
   str = str.replace(/[\u064B-\u065F\u0670\u0654\u0655\u0653]/g, '');
-
   // تحويل الأرقام الشرقية والفارسية بمرور واحد O(N)
   str = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) & 0x0f));
-
   str = str.toUpperCase();
   str = str.replace(/[A-Z]/g, (ch) => enToArMap[ch] || '');
   str = str.replace(/[\u0622\u0623\u0625\u0671\u0672\u0673\u0675\u0627]/g, 'ا');
@@ -280,16 +288,13 @@ export const getPlateFingerprint = (plate?: any): string => {
   str = str.replace(/ة/g, 'ه');
   str = str.replace(/[ىی]/g, 'ي');
   str = str.replace(/[کگ]/g, 'ك');
-
   const letters = str.replace(/[^ا-ي]/g, '');
   const digits = str.replace(/[^0-9]/g, '');
-
   let result = '';
   if (!letters && !digits) result = '';
   else if (!letters) result = `_${digits}`;
   else if (!digits) result = `${letters}_`;
   else result = `${letters}_${digits}`;
-
   if (plateFingerprintCache.size > 2500) plateFingerprintCache.clear();
   plateFingerprintCache.set(raw, result);
   return result;
@@ -302,7 +307,6 @@ export const normalizePhone = (phone?: any): string => {
   const raw = String(phone);
   const cached = phoneNormalizeCache.get(raw);
   if (cached !== undefined) return cached;
-
   let str = raw.trim();
   str = str.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (ch) => String(ch.charCodeAt(0) & 0x0f));
   let clean = str.replace(/[^\d]/g, '');
@@ -333,6 +337,7 @@ const getMs = (value?: number | string) => {
 // ===================== ⏱️ مزامنة توقيت السيرفر =====================
 let serverTimeOffset = 0;
 let lastClockSyncTime = 0;
+
 export const syncServerClock = async () => {
   if (Date.now() - lastClockSyncTime < 15 * 60 * 1000 || !isSupabaseConfigured()) return;
   
@@ -355,6 +360,7 @@ export const syncServerClock = async () => {
     }
   } catch {}
 };
+
 export const getServerNow = (): number => Date.now() + serverTimeOffset;
 syncServerClock();
 
@@ -362,7 +368,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
   const active = list.filter((s) => s.status === 'active');
   const completed = list.filter((s) => s.status === 'completed');
   const bestByPlateSource = new Map<string, ParkingSession>();
-
   for (const session of active) {
     const plate = normalizePlate(session.carPlate);
     if (!plate) continue;
@@ -384,7 +389,6 @@ const dedupeActiveSessions = (list: ParkingSession[]): ParkingSession[] => {
       }
     }
   }
-
   return [...Array.from(bestByPlateSource.values()), ...completed].sort((a, b) => {
     const aTime = a.status === 'active' ? getMs(a.startTime) : getMs(a.endTime);
     const bTime = b.status === 'active' ? getMs(b.startTime) : getMs(b.endTime);
@@ -541,9 +545,13 @@ const haveMessagesChanged = (prev: Message[], next: Message[]): boolean => {
   return false;
 };
 
+// 🔒 أقفال الحماية من الضغط المزدوج وتكرار العمليات (Idempotency Locks)
 const sessionStartLocks = new Set<string>();
 const sessionEndLocks = new Set<string>();
+const topUpApproveLocks = new Set<string>();
+const incomingCarLocks = new Set<string>();
 let walletDeductLock = false;
+let topUpSubmitLock = false;
 
 // ⏱️ نظام الخنق لمنع تكرار الـ fetchAll
 let isFetchingAllInProgress = false;
@@ -637,9 +645,30 @@ interface AppState {
 // ===================== Store =====================
 export const useStore = create<AppState>((set, get) => ({
   view: (() => { try { return (localStorage.getItem('appView') as ViewType) || 'user'; } catch { return 'user'; } })(),
-  setView: (v) => { set({ view: v }); localStorage.setItem('appView', v); },
-  screen: (() => { try { return (localStorage.getItem('appScreen') as ScreenType) || 'splash'; } catch { return 'splash'; } })(),
-  setScreen: (s) => { set({ screen: s }); localStorage.setItem('appScreen', s); },
+  setView: (v) => { set({ view: v }); try { localStorage.setItem('appView', v); } catch {} },
+  screen: (() => {
+    try {
+      const savedUser = safeGetStorage('currentUser');
+      const savedLastUserScreen = localStorage.getItem('lastUserScreen') as ScreenType | null;
+      const savedAppScreen = localStorage.getItem('appScreen') as ScreenType | null;
+      if (savedUser && savedLastUserScreen && PERSISTENT_USER_SCREENS.has(savedLastUserScreen)) {
+        return savedLastUserScreen;
+      }
+      if (savedAppScreen) return savedAppScreen;
+      return savedUser ? 'list' : 'splash';
+    } catch {
+      return 'splash';
+    }
+  })(),
+  setScreen: (s) => {
+    set({ screen: s });
+    try {
+      localStorage.setItem('appScreen', s);
+      if (PERSISTENT_USER_SCREENS.has(s)) {
+        localStorage.setItem('lastUserScreen', s);
+      }
+    } catch {}
+  },
   currentUser: safeGetStorage('currentUser'),
   setCurrentUser: async (u) => {
     if (!u) { set({ currentUser: null }); safeRemoveStorage('currentUser'); return; }
@@ -909,15 +938,15 @@ export const useStore = create<AppState>((set, get) => ({
   },
   garages: getCachedGarages(),
   currentGarageId: (() => { try { return localStorage.getItem('currentGarageId') || null; } catch { return null; } })(),
-  setCurrentGarageId: (id) => { set({ currentGarageId: id }); if (id) localStorage.setItem('currentGarageId', id); else localStorage.removeItem('currentGarageId'); },
+  setCurrentGarageId: (id) => { set({ currentGarageId: id }); try { if (id) localStorage.setItem('currentGarageId', id); else localStorage.removeItem('currentGarageId'); } catch {} },
   selectedGarageId: (() => { try { return localStorage.getItem('selectedGarageId') || null; } catch { return null; } })(),
-  setSelectedGarageId: (id) => { set({ selectedGarageId: id }); if (id) localStorage.setItem('selectedGarageId', id); else localStorage.removeItem('selectedGarageId'); },
+  setSelectedGarageId: (id) => { set({ selectedGarageId: id }); try { if (id) localStorage.setItem('selectedGarageId', id); else localStorage.removeItem('selectedGarageId'); } catch {} },
   getMyOwnedGarages: (phone: string) => {
     if (!phone) return [];
     const np = normalizePhone(phone);
     return get().garages.filter((g) => normalizePhone(g.ownerPhone || '') === np || normalizePhone(g.phone) === np);
   },
-  sessions: [],
+  sessions: getCachedSessions(),
   acknowledgedSessionIds: (() => {
     try {
       const saved = localStorage.getItem('acknowledgedSessionIds');
@@ -934,14 +963,20 @@ export const useStore = create<AppState>((set, get) => ({
       return { acknowledgedSessionIds: next };
     });
   },
-  offers: [], walletTopUps: [], incomingCars: [], messages: [],
+  offers: [],
+  walletTopUps: [],
+  incomingCars: getCachedIncomingCars(),
+  messages: [],
   logout: () => {
     set({ currentUser: null, currentGarageId: null, selectedGarageId: null, view: 'user', screen: 'splash', acknowledgedSessionIds: new Set() });
     safeRemoveStorage('currentUser'); safeRemoveStorage('appView'); safeRemoveStorage('appScreen');
+    safeRemoveStorage('lastUserScreen');
     safeRemoveStorage('currentGarageId'); safeRemoveStorage('selectedGarageId');
     safeRemoveStorage('acknowledgedSessionIds');
     safeRemoveStorage('dailyDeductionDate');
     safeRemoveStorage('dailyDeductionCount');
+    safeRemoveStorage('cached_user_sessions_v2');
+    safeRemoveStorage('cached_incoming_cars_v2');
   },
   fetchAll: async () => {
     if (!isSupabaseConfigured()) return;
@@ -954,7 +989,6 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       let currentGarages = get().garages;
       let garagesUpdated = false;
-
       // 🏢 2. جلب الجراجات بذكاء وتجنب التحديث العشوائي
       if (currentGarages.length === 0) {
         const fullRes = await supabase
@@ -1014,7 +1048,6 @@ export const useStore = create<AppState>((set, get) => ({
               }
               return g;
             });
-
           if (newGaragesFull.length > 0 || nextGarages.length !== currentGarages.length) {
             currentGarages = [...nextGarages, ...newGaragesFull];
             garagesUpdated = true;
@@ -1024,12 +1057,10 @@ export const useStore = create<AppState>((set, get) => ({
           if (garagesUpdated) safeSetStorage('cached_garages_v2', currentGarages);
         }
       }
-
       // ⚡ 3. تخصيص الاستعلامات حسب الدور لمنع الحمل الزائد
       const view = get().view;
       const user = get().currentUser;
       const currentGarageId = get().currentGarageId;
-
       // 🛑 لو المستخدم مش مسجل دخول وهو في وضع user، لا نرهق السيرفر بالبحث عن جلسات عامة لا تخصه
       if (view === 'user' && !user) {
         if (garagesUpdated) {
@@ -1037,19 +1068,15 @@ export const useStore = create<AppState>((set, get) => ({
         }
         return;
       }
-
       let sessionsPromise: PromiseLike<{ data: any[] | null }>;
       let topupsPromise: PromiseLike<{ data: any[] | null }>;
       let incomingPromise: PromiseLike<{ data: any[] | null }>;
       let messagesPromise: PromiseLike<{ data: any[] | null }>;
-
       if (view === 'user' && user) {
         const userPhone = user.phone ? normalizePhone(user.phone) : '';
         const userPlate = user.carPlate ? normalizePlate(user.carPlate) : '';
-
         let sQuery = supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(30);
         let icQuery = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(15);
-
         if (userPhone && userPlate) {
           sQuery = sQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
           icQuery = icQuery.or(`customer_phone.eq.${userPhone},car_plate.eq.${userPlate}`);
@@ -1060,7 +1087,6 @@ export const useStore = create<AppState>((set, get) => ({
           sQuery = sQuery.eq('car_plate', userPlate);
           icQuery = icQuery.eq('car_plate', userPlate);
         }
-
         sessionsPromise = sQuery;
         incomingPromise = icQuery;
         topupsPromise = userPhone
@@ -1082,19 +1108,23 @@ export const useStore = create<AppState>((set, get) => ({
         incomingPromise = supabase.from('incoming_cars').select('*').eq('status', 'coming').order('created_at', { ascending: false }).limit(50);
         messagesPromise = supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(50);
       }
-
       const [activeSessionsRes, w, ic, msgs] = await Promise.all([
         sessionsPromise,
         topupsPromise,
         incomingPromise,
         messagesPromise,
       ]);
-
       const supabaseSessions = activeSessionsRes.data ? activeSessionsRes.data.map(mapSession) : get().sessions;
       const finalSessions = dedupeActiveSessions(supabaseSessions);
       const nextTopUps = w.data ? w.data.map(mapTopUp) : get().walletTopUps;
       const nextIncoming = ic.data ? ic.data.map(mapIncoming).filter((c) => c.status === 'coming') : get().incomingCars;
       const nextMessages = msgs.data ? msgs.data.map(mapMessage) : get().messages;
+
+      // حفظ كاش سريع لجلسات العميل والسيارات القادمة ليفتح التطبيق فوراً على شاشة الجلسة أو التوجيه
+      if (view === 'user') {
+        safeSetStorage('cached_user_sessions_v2', finalSessions.slice(0, 15));
+        safeSetStorage('cached_incoming_cars_v2', nextIncoming.slice(0, 10));
+      }
 
       // ⚡ تحديث الـ State فقط للأجزاء التي تغيرت فعلياً لمنع إعادة الرسم العشوائية
       const statePatch: Partial<AppState> = {};
@@ -1103,11 +1133,9 @@ export const useStore = create<AppState>((set, get) => ({
       if (w.data && haveTopUpsChanged(get().walletTopUps, nextTopUps)) statePatch.walletTopUps = nextTopUps;
       if (ic.data && haveIncomingChanged(get().incomingCars, nextIncoming)) statePatch.incomingCars = nextIncoming;
       if (msgs.data && haveMessagesChanged(get().messages, nextMessages)) statePatch.messages = nextMessages;
-
       if (Object.keys(statePatch).length > 0) {
         set(statePatch);
       }
-
       // 💳 4. تحديث بيانات المستخدم فقط عند وجود تغير حقيقي
       const currentUserInStore = get().currentUser;
       if (currentUserInStore?.phone) {
@@ -1123,7 +1151,6 @@ export const useStore = create<AppState>((set, get) => ({
           const nextShieldAct = userData.shield_activated === true;
           const nextShieldPhone = userData.shield_phone || currentUserInStore.shieldPhone || '';
           const nextShieldCode = userData.shield_code || currentUserInStore.shieldCode || '';
-
           if (
             currentUserInStore.wallet !== nextWallet ||
             currentUserInStore.hasUsedFreeSession !== nextHasUsedFree ||
@@ -1390,7 +1417,11 @@ export const useStore = create<AppState>((set, get) => ({
         freeMinutesApplied: 0,
         shieldCost: (s as any).shieldCost ?? 0, 
       };
-      set((st) => ({ sessions: dedupeActiveSessions([optimisticSession, ...st.sessions]) }));
+      set((st) => {
+        const nextSessions = dedupeActiveSessions([optimisticSession, ...st.sessions]);
+        if (st.view === 'user') safeSetStorage('cached_user_sessions_v2', nextSessions.slice(0, 15));
+        return { sessions: nextSessions };
+      });
       await get().adjustGarageSpots(s.garageId, -1);
       if (isSupabaseConfigured()) {
         const { data } = await supabase.from('sessions').insert({
@@ -1415,9 +1446,11 @@ export const useStore = create<AppState>((set, get) => ({
           shield_cost: (s as any).shieldCost ?? 0,
         }).select().single();
         if (data) {
-          set((st) => ({
-            sessions: dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? mapSession(data) : x)),
-          }));
+          set((st) => {
+            const nextSessions = dedupeActiveSessions(st.sessions.map((x) => x.id === sessionId ? mapSession(data) : x));
+            if (st.view === 'user') safeSetStorage('cached_user_sessions_v2', nextSessions.slice(0, 15));
+            return { sessions: nextSessions };
+          });
         }
       }
       return sessionId;
@@ -1457,7 +1490,11 @@ export const useStore = create<AppState>((set, get) => ({
         freeMinutesApplied,
         addedBy: finalAddedBy,
       };
-      set((st) => ({ sessions: st.sessions.map((s) => (s.id === id ? endedSession : s)) }));
+      set((st) => {
+        const nextSessions = st.sessions.map((s) => (s.id === id ? endedSession : s));
+        if (st.view === 'user') safeSetStorage('cached_user_sessions_v2', nextSessions.slice(0, 15));
+        return { sessions: nextSessions };
+      });
       await get().adjustGarageSpots(session.garageId, +1);
       if (paymentMethod === 'wallet' && isAppSession && safeTotalPrice > 0) {
         await get().deductWallet(safeTotalPrice);
@@ -1549,6 +1586,10 @@ export const useStore = create<AppState>((set, get) => ({
     if (isSupabaseConfigured()) supabase.from('offers').delete().eq('id', id);
   },
   addWalletTopUp: (w) => {
+    if (topUpSubmitLock) return;
+    topUpSubmitLock = true;
+    setTimeout(() => { topUpSubmitLock = false; }, 1500);
+
     const bonus = w.bonus ?? w.bonusAmount ?? calculateBonus(w.amount);
     const newW: WalletTopUp = { ...w, id: uid(), status: 'pending', timestamp: Date.now(), bonusAmount: bonus };
     set((st) => ({ walletTopUps: [newW, ...st.walletTopUps].slice(0, 20) }));
@@ -1568,8 +1609,11 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   approveTopUp: async (id) => {
+    if (topUpApproveLocks.has(id)) return;
     const target = get().walletTopUps.find((w) => w.id === id);
     if (!target || target.status !== 'pending') return;
+    topUpApproveLocks.add(id);
+
     const bonus = target.bonusAmount ?? calculateBonus(target.amount);
     const totalCredit = target.amount + bonus;
     const userPhone = normalizePhone(target.userPhone || '');
@@ -1578,8 +1622,8 @@ export const useStore = create<AppState>((set, get) => ({
         w.id === id ? { ...w, status: 'approved' as const, bonusAmount: bonus } : w
       ),
     }));
-    if (isSupabaseConfigured()) {
-      try {
+    try {
+      if (isSupabaseConfigured()) {
         await supabase
           .from('wallet_topups')
           .update({ status: 'approved', bonus_amount: bonus })
@@ -1598,21 +1642,23 @@ export const useStore = create<AppState>((set, get) => ({
               .eq('phone', userPhone);
           }
         }
-      } catch (err) {
-        console.error('Approve error:', err);
-        set((st) => ({
-          walletTopUps: st.walletTopUps.map((w) =>
-            w.id === id ? { ...w, status: 'pending' as const } : w
-          ),
-        }));
-        throw err;
       }
-    }
-    const currentUser = get().currentUser;
-    if (currentUser && normalizePhone(currentUser.phone) === userPhone) {
-      const updated = { ...currentUser, wallet: (currentUser.wallet || 0) + totalCredit };
-      set({ currentUser: updated });
-      safeSetStorage('currentUser', updated);
+      const currentUser = get().currentUser;
+      if (currentUser && normalizePhone(currentUser.phone) === userPhone) {
+        const updated = { ...currentUser, wallet: (currentUser.wallet || 0) + totalCredit };
+        set({ currentUser: updated });
+        safeSetStorage('currentUser', updated);
+      }
+    } catch (err) {
+      console.error('Approve error:', err);
+      set((st) => ({
+        walletTopUps: st.walletTopUps.map((w) =>
+          w.id === id ? { ...w, status: 'pending' as const } : w
+        ),
+      }));
+      throw err;
+    } finally {
+      setTimeout(() => topUpApproveLocks.delete(id), 1000);
     }
   },
   rejectTopUp: async (id) => {
@@ -1624,21 +1670,41 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   addIncomingCar: async (c) => {
-    const incomingId = crypto.randomUUID();
-    const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
-    set((st) => ({ incomingCars: [newC, ...st.incomingCars].slice(0, 30) }));
-    if (!isSupabaseConfigured()) return;
+    const lockKey = `${c.garageId}:${normalizePlate(c.carPlate)}`;
+    if (incomingCarLocks.has(lockKey)) return;
+    incomingCarLocks.add(lockKey);
+
     try {
+      const incomingId = crypto.randomUUID();
+      const newC: IncomingCar = { ...c, id: incomingId, startTime: Date.now(), status: 'coming' };
+      set((st) => {
+        const next = [newC, ...st.incomingCars].slice(0, 30);
+        if (st.view === 'user') safeSetStorage('cached_incoming_cars_v2', next.slice(0, 10));
+        return { incomingCars: next };
+      });
+      if (!isSupabaseConfigured()) return;
       const { data } = await supabase.from('incoming_cars').insert({
         id: incomingId, garage_id: c.garageId, car_plate: c.carPlate,
         customer_name: c.customerName, customer_phone: c.customerPhone,
         agreed_price: c.agreedPrice, estimated_arrival: c.estimatedArrival,
       }).select().single();
-      if (data) set((st) => ({ incomingCars: st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x)) }));
-    } catch {}
+      if (data) {
+        set((st) => {
+          const next = st.incomingCars.map((x) => (x.id === incomingId ? mapIncoming(data) : x));
+          if (st.view === 'user') safeSetStorage('cached_incoming_cars_v2', next.slice(0, 10));
+          return { incomingCars: next };
+        });
+      }
+    } catch {} finally {
+      setTimeout(() => incomingCarLocks.delete(lockKey), 1500);
+    }
   },
   removeIncomingCar: async (id) => {
-    set((st) => ({ incomingCars: st.incomingCars.filter((c) => c.id !== id) }));
+    set((st) => {
+      const next = st.incomingCars.filter((c) => c.id !== id);
+      if (st.view === 'user') safeSetStorage('cached_incoming_cars_v2', next.slice(0, 10));
+      return { incomingCars: next };
+    });
     if (!isSupabaseConfigured()) return;
     try {
       await supabase.from('incoming_cars').delete().eq('id', id);
@@ -1683,7 +1749,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 }));
 
-// ===================== Realtime الفائق =====================
+// ===================== Realtime الفائق (Delta In-Memory بدون طلبات HTTP إضافية) =====================
 let realtimeStarted = false;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let isOperationInProgress = false;
@@ -1700,18 +1766,124 @@ export function pausePolling(duration = 5000) {
   pauseTimeout = setTimeout(() => { isOperationInProgress = false; }, duration);
 }
 
+const isRelevantSessionForCurrentState = (s: ParkingSession, state: AppState): boolean => {
+  if (state.view === 'admin') return true;
+  if (state.view === 'garage') return Boolean(state.currentGarageId && s.garageId === state.currentGarageId);
+  if (state.view === 'user' && state.currentUser) {
+    const uPhone = normalizePhone(state.currentUser.phone);
+    const uPlate = normalizePlate(state.currentUser.carPlate);
+    const sPhone = normalizePhone(s.customerPhone || '');
+    const sPlate = normalizePlate(s.carPlate);
+    return Boolean((uPhone && sPhone === uPhone) || (uPlate && sPlate === uPlate));
+  }
+  return false;
+};
+
 export function setupRealtime() {
   if (realtimeStarted) return;
   realtimeStarted = true;
+
+  // 1. اشتراك Realtime Delta مباشر يحدث الذاكرة في 0ms بدون استدعاء fetchAll()
+  if (isSupabaseConfigured()) {
+    try {
+      supabase
+        .channel('parq_realtime_delta_v2')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, (payload: any) => {
+          const st = useStore.getState();
+          if (payload.eventType === 'DELETE' && payload.old?.id) {
+            const next = st.sessions.filter((s) => s.id !== payload.old.id);
+            if (next.length !== st.sessions.length) {
+              useStore.setState({ sessions: next });
+              if (st.view === 'user') safeSetStorage('cached_user_sessions_v2', next.slice(0, 15));
+            }
+            return;
+          }
+          if (payload.new) {
+            const mapped = mapSession(payload.new);
+            if (!isRelevantSessionForCurrentState(mapped, st)) return;
+            const exists = st.sessions.some((s) => s.id === mapped.id);
+            const merged = exists
+              ? st.sessions.map((s) => (s.id === mapped.id ? mapped : s))
+              : [mapped, ...st.sessions];
+            const deduped = dedupeActiveSessions(merged);
+            if (haveSessionsChanged(st.sessions, deduped)) {
+              useStore.setState({ sessions: deduped });
+              if (st.view === 'user') safeSetStorage('cached_user_sessions_v2', deduped.slice(0, 15));
+            }
+          }
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars' }, (payload: any) => {
+          const st = useStore.getState();
+          if (payload.eventType === 'DELETE' && payload.old?.id) {
+            const next = st.incomingCars.filter((c) => c.id !== payload.old.id);
+            if (next.length !== st.incomingCars.length) {
+              useStore.setState({ incomingCars: next });
+              if (st.view === 'user') safeSetStorage('cached_incoming_cars_v2', next.slice(0, 10));
+            }
+            return;
+          }
+          if (payload.new) {
+            if (payload.new.status && payload.new.status !== 'coming') {
+              const next = st.incomingCars.filter((c) => c.id !== payload.new.id);
+              useStore.setState({ incomingCars: next });
+              return;
+            }
+            const mapped = mapIncoming(payload.new);
+            if (st.view === 'garage' && st.currentGarageId && mapped.garageId !== st.currentGarageId) return;
+            if (st.view === 'user' && st.currentUser) {
+              const uPhone = normalizePhone(st.currentUser.phone);
+              const uPlate = normalizePlate(st.currentUser.carPlate);
+              if (
+                normalizePhone(mapped.customerPhone) !== uPhone &&
+                normalizePlate(mapped.carPlate) !== uPlate
+              ) {
+                return;
+              }
+            }
+            const exists = st.incomingCars.some((c) => c.id === mapped.id);
+            const next = exists
+              ? st.incomingCars.map((c) => (c.id === mapped.id ? mapped : c))
+              : [mapped, ...st.incomingCars].slice(0, 30);
+            useStore.setState({ incomingCars: next });
+            if (st.view === 'user') safeSetStorage('cached_incoming_cars_v2', next.slice(0, 10));
+          }
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'garages' }, (payload: any) => {
+          if (!payload.new) return;
+          const st = useStore.getState();
+          const mapped = mapGarage(payload.new);
+          const next = st.garages.map((g) => (g.id === mapped.id ? mapped : g));
+          safeSetStorage('cached_garages_v2', next);
+          useStore.setState({ garages: next });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_topups' }, (payload: any) => {
+          if (!payload.new) return;
+          const st = useStore.getState();
+          const mapped = mapTopUp(payload.new);
+          if (st.view === 'user' && st.currentUser) {
+            if (normalizePhone(mapped.userPhone) !== normalizePhone(st.currentUser.phone)) return;
+          }
+          const exists = st.walletTopUps.some((w) => w.id === mapped.id);
+          const next = exists
+            ? st.walletTopUps.map((w) => (w.id === mapped.id ? mapped : w))
+            : [mapped, ...st.walletTopUps].slice(0, 50);
+          useStore.setState({ walletTopUps: next });
+        })
+        .subscribe();
+    } catch {}
+  }
+
+  // 2. تحديث احتياطي هادئ في الخلفية كل 30 ثانية فقط عندما تكون الشاشة مرئية
   const startPolling = () => {
     if (pollingInterval) clearInterval(pollingInterval);
     pollingInterval = setInterval(() => {
       if (!isOperationInProgress && document.visibilityState === 'visible') {
         useStore.getState().fetchAll();
       }
-    }, 25000);
+    }, 30000);
   };
   startPolling();
+
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       useStore.getState().fetchAll();

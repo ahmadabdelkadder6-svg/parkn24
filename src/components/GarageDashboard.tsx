@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,20 +10,16 @@ import { supabase } from '../lib/supabase';
 import { calculateFullHours, calculateCost, calculateCostWithLoyalty } from '../utils/pricing';
 import toast from 'react-hot-toast';
 import { subscribeToPush } from '../lib/pushManager';
-
 const UNDO_TIMEOUT_SECONDS = 30;
 const GEOFENCE_RADIUS_METERS = 250;
-
 // ⏱️ إعدادات التزامن الذكي للخلفية (موفرة للبطارية والسيرفر)
 const VALET_PING_INTERVAL_MS = 30000;
 const VALET_LIVE_THRESHOLD_MS = 45000;
 const VALET_BACKGROUND_GRACE_MS = 10 * 60 * 1000;
 const VALET_MIN_MOVE_METERS = 15;
-
 // ─── 🔔 نظام الصوت والتنبيهات المدمج داخل الشاشة ───────────────────
 let garageAudioCtx: AudioContext | null = null;
 let isAudioUnlocked = false;
-
 const unlockAudioEngine = async () => {
   if (isAudioUnlocked && garageAudioCtx && garageAudioCtx.state === 'running') return;
   try {
@@ -40,7 +37,6 @@ const unlockAudioEngine = async () => {
     console.warn('Audio Context Unlock failed:', err);
   }
 };
-
 if (typeof window !== 'undefined') {
   const events = ['touchstart', 'touchend', 'mousedown', 'keydown', 'click'];
   const onFirstTouch = () => {
@@ -49,7 +45,6 @@ if (typeof window !== 'undefined') {
   };
   events.forEach(e => document.addEventListener(e, onFirstTouch, { passive: true }));
 }
-
 // 🔊 أقصى وأقوى صوت إنذار (نغمات طوارئ حادة ومضاعفة لاختراق الضوضاء)
 const playCarArrivalAlarm = async () => {
   try {
@@ -92,7 +87,6 @@ const playCarArrivalAlarm = async () => {
     console.warn('Audio play error:', e);
   }
 };
-
 const triggerVibration = () => {
   try {
     if ('vibrate' in navigator) {
@@ -105,7 +99,6 @@ const triggerVibration = () => {
     console.warn('Vibration API blocked or unsupported:', err);
   }
 };
-
 const triggerSystemNotification = async (title: string, body: string, tag = 'valet-alarm') => {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -131,7 +124,6 @@ const triggerSystemNotification = async (title: string, body: string, tag = 'val
     console.warn('Notification failed:', err);
   }
 };
-
 const fireIncomingCarAlert = (carPlate: string) => {
   playCarArrivalAlarm();
   triggerVibration();
@@ -141,7 +133,6 @@ const fireIncomingCarAlert = (carPlate: string) => {
     `incoming-${carPlate}`
   );
 };
-
 /* ─── 🎨 الألوان الرسمية الفاخرة لتطبيق Park'n 24 ─── */
 const BRAND = {
   blue: '#1656b8',
@@ -158,7 +149,6 @@ const BRAND = {
   card: '#ffffff',
   bg: '#f4f7fc',
 };
-
 interface UndoableSession {
   sessionId: string;
   localId: string;
@@ -166,7 +156,6 @@ interface UndoableSession {
   price: number;
   addedAt: number;
 }
-
 // ==========================================
 // 🌍 نظام السياج الجغرافي الذكي (GEOFENCE ENGINE)
 // ==========================================
@@ -178,7 +167,6 @@ interface GeofenceState {
   errorMessage?: string;
   coords?: { lat: number; lng: number } | null;
 }
-
 const extractGarageCoords = (garage: any): { lat: number; lng: number } | null => {
   if (!garage) return null;
   const lat = parseFloat(garage.latitude ?? garage.lat ?? garage.location_lat);
@@ -188,7 +176,6 @@ const extractGarageCoords = (garage: any): { lat: number; lng: number } | null =
   }
   return null;
 };
-
 const haversineDistance = (
   lat1: number, lon1: number,
   lat2: number, lon2: number
@@ -203,7 +190,6 @@ const haversineDistance = (
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
-
 const useValetGeofence = (
   enabled: boolean,
   garageCoords: { lat: number; lng: number } | null,
@@ -221,7 +207,6 @@ const useValetGeofence = (
   const lastValidInsideTsRef = useRef<number>(0);
   const prevStateRef = useRef<GeofenceState>(state);
   prevStateRef.current = state;
-
   useEffect(() => {
     if (!enabled) {
       setState({ status: 'inside', distance: 0, accuracy: null, lastCheck: Date.now(), coords: null });
@@ -247,7 +232,6 @@ const useValetGeofence = (
       });
       return;
     }
-
     const handleSuccess = (position: GeolocationPosition) => {
       const { latitude, longitude, accuracy } = position.coords;
       const dist = haversineDistance(latitude, longitude, garageCoords.lat, garageCoords.lng);
@@ -263,7 +247,6 @@ const useValetGeofence = (
       const roundedDist = Math.round(dist);
       const distDiff = prev.distance === null ? 999 : Math.abs(roundedDist - prev.distance);
       const timeDiff = now - prev.lastCheck;
-
       // 🛡️ تقليل الـ Re-render: لا نحدث إلا إذا تغيرت الحالة أو تحرك المستخدم مسافة ملموسة (>= 4 أمتار) أو مرت 10 ثوانٍ
       if (statusChanged || distDiff >= 4 || timeDiff >= 10000) {
         setState({
@@ -275,7 +258,6 @@ const useValetGeofence = (
         });
       }
     };
-
     const handleError = (error: GeolocationPositionError) => {
       const now = Date.now();
       const timeSinceLastInside = now - lastValidInsideTsRef.current;
@@ -306,13 +288,11 @@ const useValetGeofence = (
         errorMessage: errorMsg,
       });
     };
-
     const stableOptions: PositionOptions = {
       enableHighAccuracy: true,
       timeout: 12000,
       maximumAge: 4000,
     };
-
     watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, stableOptions);
     return () => {
       if (watchIdRef.current !== null) {
@@ -321,10 +301,8 @@ const useValetGeofence = (
       }
     };
   }, [enabled, garageCoords?.lat, garageCoords?.lng, radiusMeters]);
-
   return state;
 };
-
 interface ValetLocationInfo {
   valetNumber: number;
   valetName: string;
@@ -334,7 +312,6 @@ interface ValetLocationInfo {
   lastSeen: number | null;
   isBackground?: boolean;
 }
-
 const useOwnerValetLocations = (
   enabled: boolean,
   garageId?: string,
@@ -343,6 +320,7 @@ const useOwnerValetLocations = (
   const [locations, setLocations] = useState<ValetLocationInfo[]>([]);
   const garageRef = useRef(garage);
   garageRef.current = garage;
+  const recordsRef = useRef<Record<number, any>>({});
 
   const v1Name = garage?.valetName1;
   const v2Name = garage?.valetName2;
@@ -350,6 +328,48 @@ const useOwnerValetLocations = (
   const v1Active = garage?.valet1Active;
   const v2Active = garage?.valet2Active;
   const v3Active = garage?.valet3Active;
+
+  const computeValetLocations = useCallback(() => {
+    const currentGarage = garageRef.current;
+    if (!enabled || !garageId || !currentGarage) return;
+    const now = Date.now();
+    const valets: ValetLocationInfo[] = [
+      { valetNumber: 1, valetName: String(currentGarage.valetName1 || 'فالية 1'), isActive: currentGarage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
+      { valetNumber: 2, valetName: String(currentGarage.valetName2 || 'فالية 2'), isActive: currentGarage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
+      { valetNumber: 3, valetName: String(currentGarage.valetName3 || 'فالية 3'), isActive: currentGarage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
+    ].filter(v => v.valetName && String(v.valetName).trim());
+
+    valets.forEach(v => {
+      if (!v.isActive) {
+        v.status = 'inactive';
+        return;
+      }
+      const record = recordsRef.current[v.valetNumber];
+      if (!record || !record.updated_at) {
+        v.status = 'offline';
+        return;
+      }
+      const lastSeenMs = new Date(record.updated_at).getTime();
+      const diff = now - lastSeenMs;
+      if (diff <= VALET_LIVE_THRESHOLD_MS) {
+        v.status = record.is_inside ? 'inside' : 'outside';
+        v.distance = record.distance;
+        v.lastSeen = lastSeenMs;
+        v.isBackground = false;
+      } else if (diff <= VALET_BACKGROUND_GRACE_MS && record.is_inside) {
+        v.status = 'inside';
+        v.distance = record.distance;
+        v.lastSeen = lastSeenMs;
+        v.isBackground = true;
+      } else {
+        v.status = 'offline';
+        v.distance = record.distance;
+        v.lastSeen = lastSeenMs;
+        v.isBackground = false;
+      }
+    });
+    setLocations(valets);
+  }, [enabled, garageId, v1Name, v2Name, v3Name, v1Active, v2Active, v3Active]);
 
   const fetchLocations = useCallback(async () => {
     const currentGarage = garageRef.current;
@@ -360,67 +380,41 @@ const useOwnerValetLocations = (
         .select('*')
         .eq('garage_id', garageId);
       if (error) return;
-      const now = Date.now();
-      const valets: ValetLocationInfo[] = [
-        { valetNumber: 1, valetName: String(currentGarage.valetName1 || 'فالية 1'), isActive: currentGarage.valet1Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 2, valetName: String(currentGarage.valetName2 || 'فالية 2'), isActive: currentGarage.valet2Active ?? false, status: 'offline', distance: null, lastSeen: null },
-        { valetNumber: 3, valetName: String(currentGarage.valetName3 || 'فالية 3'), isActive: currentGarage.valet3Active ?? false, status: 'offline', distance: null, lastSeen: null },
-      ].filter(v => v.valetName && String(v.valetName).trim());
-
-      valets.forEach(v => {
-        if (!v.isActive) {
-          v.status = 'inactive';
-          return;
-        }
-        const record = data?.find((d: any) => Number(d.valet_number) === v.valetNumber);
-        if (!record || !record.updated_at) {
-          v.status = 'offline';
-          return;
-        }
-        const lastSeenMs = new Date(record.updated_at).getTime();
-        const diff = now - lastSeenMs;
-        if (diff <= VALET_LIVE_THRESHOLD_MS) {
-          v.status = record.is_inside ? 'inside' : 'outside';
-          v.distance = record.distance;
-          v.lastSeen = lastSeenMs;
-          v.isBackground = false;
-        } else if (diff <= VALET_BACKGROUND_GRACE_MS && record.is_inside) {
-          v.status = 'inside';
-          v.distance = record.distance;
-          v.lastSeen = lastSeenMs;
-          v.isBackground = true;
-        } else {
-          v.status = 'offline';
-          v.distance = record.distance;
-          v.lastSeen = lastSeenMs;
-          v.isBackground = false;
-        }
+      const map: Record<number, any> = {};
+      (data || []).forEach((d: any) => {
+        map[Number(d.valet_number)] = d;
       });
-      setLocations(valets);
+      recordsRef.current = map;
+      computeValetLocations();
     } catch (err) {
       console.error('Fetch locations error:', err);
     }
-  }, [enabled, garageId, v1Name, v2Name, v3Name, v1Active, v2Active, v3Active]);
+  }, [enabled, garageId, computeValetLocations]);
 
   useEffect(() => {
     if (!enabled || !garageId) return;
     fetchLocations();
-    const interval = setInterval(fetchLocations, 30000);
+    // إعادة حساب حالة الاتصال محلياً كل 15 ثانية بدون استهلاك طلبات HTTP إضافية
+    const interval = setInterval(computeValetLocations, 15000);
     const channel = supabase
       .channel(`valet-locations-channel-${garageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'valet_locations', filter: `garage_id=eq.${garageId}` }, () => {
-        fetchLocations();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'valet_locations', filter: `garage_id=eq.${garageId}` }, (payload) => {
+        if (payload.eventType === 'DELETE' && payload.old) {
+          delete recordsRef.current[Number((payload.old as any).valet_number)];
+        } else if (payload.new) {
+          const rec = payload.new as any;
+          recordsRef.current[Number(rec.valet_number)] = rec;
+        }
+        computeValetLocations();
       })
       .subscribe();
     return () => {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [enabled, garageId, fetchLocations]);
-
+  }, [enabled, garageId, fetchLocations, computeValetLocations]);
   return locations;
 };
-
 const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
   geofenceState,
   garageName,
@@ -438,7 +432,6 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
   const isOutside = geofenceState.status === 'outside';
   const isNoCoords = geofenceState.status === 'no_garage_coords';
   const isLoading = geofenceState.status === 'loading';
-
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6" style={{ background: BRAND.navy }}>
@@ -454,7 +447,6 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
       </div>
     );
   }
-
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-5" style={{ background: 'linear-gradient(180deg, #111827 0%, #0a1628 100%)' }}>
       <div className="text-center max-w-sm w-full">
@@ -511,14 +503,12 @@ const ValetGeofenceBlockScreen = memo(function ValetGeofenceBlockScreen({
     </div>
   );
 });
-
 const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
   valetLocations,
 }: {
   valetLocations: ValetLocationInfo[];
 }) {
   if (valetLocations.length === 0) return null;
-
   const getStatusDisplay = (v: ValetLocationInfo) => {
     switch (v.status) {
       case 'inside':
@@ -555,7 +545,6 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
         };
     }
   };
-
   return (
     <div className="mb-4" style={{ background: BRAND.card, borderRadius: 18, padding: '12px 14px', border: `1px solid ${BRAND.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
       <div className="flex items-center justify-between mb-2 pb-1.5 border-b" style={{ borderColor: BRAND.border }}>
@@ -584,7 +573,6 @@ const OwnerValetLocationBanner = memo(function OwnerValetLocationBanner({
     </div>
   );
 });
-
 // ==========================================
 // أدوات مساعدة
 // ==========================================
@@ -599,7 +587,6 @@ const toMs = (value: any): number => {
   }
   return 0;
 };
-
 const formatElapsed = (totalSeconds: number): string => {
   if (totalSeconds < 0) totalSeconds = 0;
   const h = Math.floor(totalSeconds / 3600);
@@ -609,19 +596,15 @@ const formatElapsed = (totalSeconds: number): string => {
   if (m > 0) return `${m}د ${s}ث`;
   return `${s}ث`;
 };
-
 const getLocalToday = (): string => {
   const n = new Date(getServerNow());
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 };
-
 const timestampToLocalDate = (ts: number): string => {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-
 const normalizeSearchPlate = (plate?: string): string => normalizePlate(plate);
-
 interface ActiveSessionCardProps {
   session: any;
   basePrice: number;
@@ -631,7 +614,6 @@ interface ActiveSessionCardProps {
   getUndoRemainingSeconds: (addedAt: number) => number;
   globalTick: number; 
 }
-
 const ActiveSessionCard = memo(function ActiveSessionCard({
   session: s,
   basePrice,
@@ -648,13 +630,11 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
   const agreedNum = Number(s.agreedPrice);
   const baseNum = Number(basePrice);
   const rate = agreedNum > 0 ? agreedNum : (baseNum > 0 ? baseNum : 15);
-
   const pricing = calculateCostWithLoyalty(el, rate, isFreeApplied);
   const isFreeNow = pricing.isFree;
   const hrs = pricing.paidHours;
   const cost = pricing.cost;
   const isM = s.source === 'manual';
-
   return (
     <div 
       style={{ 
@@ -709,7 +689,6 @@ const ActiveSessionCard = memo(function ActiveSessionCard({
     </div>
   );
 });
-
 // 🚀 المكون المعزول (ActiveSessionsList): لعزل المؤقت ومنع الـ Re-render للمكون الأب كاملاً
 const ActiveSessionsList = memo(function ActiveSessionsList({
   sessions,
@@ -729,7 +708,6 @@ const ActiveSessionsList = memo(function ActiveSessionsList({
   plateSearch: string;
 }) {
   const [globalTick, setGlobalTick] = useState(0);
-
   useEffect(() => {
     if (sessions.length === 0 && undoableSessions.length === 0) return; 
     const interval = setInterval(() => {
@@ -747,7 +725,6 @@ const ActiveSessionsList = memo(function ActiveSessionsList({
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [sessions.length, undoableSessions.length]);
-
   const filtered = useMemo(() => {
     if (!plateSearch.trim()) return sessions;
     const query = normalizeSearchPlate(plateSearch);
@@ -756,7 +733,6 @@ const ActiveSessionsList = memo(function ActiveSessionsList({
       return plate.includes(query);
     });
   }, [sessions, plateSearch]);
-
   if (filtered.length === 0) {
     return (
       <div className="text-center py-6 border-2 border-dashed rounded-xl text-xs font-bold border-slate-200 text-slate-400">
@@ -764,7 +740,6 @@ const ActiveSessionsList = memo(function ActiveSessionsList({
       </div>
     );
   }
-
   return (
     <div className="space-y-2">
       {filtered.map(s => {
@@ -785,7 +760,6 @@ const ActiveSessionsList = memo(function ActiveSessionsList({
     </div>
   );
 });
-
 // 🚀 نافذة الإعدادات المعزولة (تمنع إعادة ريندر لوحة التحكم أثناء الكتابة)
 const GarageSettingsModal = memo(function GarageSettingsModal({
   isOpen,
@@ -812,7 +786,6 @@ const GarageSettingsModal = memo(function GarageSettingsModal({
   const [editValet2Pass, setEditValet2Pass] = useState(garage?.valetPassword2 || '');
   const [editValet3Name, setEditValet3Name] = useState(garage?.valetName3 || '');
   const [editValet3Pass, setEditValet3Pass] = useState(garage?.valetPassword3 || '');
-
   useEffect(() => {
     if (garage) {
       setEditPrice(garage.basePrice || 15);
@@ -827,9 +800,7 @@ const GarageSettingsModal = memo(function GarageSettingsModal({
       setEditValet3Pass(garage.valetPassword3 || '');
     }
   }, [garage]);
-
   if (!isOpen) return null;
-
   const handleSave = () => {
     onSave({
       basePrice: editPrice, 
@@ -841,7 +812,6 @@ const GarageSettingsModal = memo(function GarageSettingsModal({
       valetName3: String(editValet3Name || '').trim(), valetPassword3: String(editValet3Pass || '').trim(),
     });
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl p-6 bg-white" onClick={e => e.stopPropagation()}>
@@ -952,7 +922,6 @@ const GarageSettingsModal = memo(function GarageSettingsModal({
     </div>
   );
 });
-
 // 🚀 نافذة تأكيد التحصيل المعزولة
 const ConfirmPaymentModal = memo(function ConfirmPaymentModal({
   confirmSession,
@@ -966,9 +935,7 @@ const ConfirmPaymentModal = memo(function ConfirmPaymentModal({
   onClose: () => void;
 }) {
   const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('cash');
-
   if (!confirmSession) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-full max-w-sm rounded-t-[28px] p-6 bg-white" onClick={e => e.stopPropagation()}>
@@ -1055,7 +1022,6 @@ const ConfirmPaymentModal = memo(function ConfirmPaymentModal({
     </div>
   );
 });
-
 // 🚀 كرت عملية مكتملة (Memoized) لمنع ريندر العناصر القديمة عند تحديث العداد
 const CompletedSessionItem = memo(function CompletedSessionItem({
   session,
@@ -1078,7 +1044,6 @@ const CompletedSessionItem = memo(function CompletedSessionItem({
   const isC = session.revenueConfirmed;
   const isSettled = (session as any).settled === true;
   const isFree = session.isFirstFreeSession === true || session.isFreeSession === true;
-
   return (
     <div className="p-2.5 border rounded-xl bg-white border-slate-200" style={{ opacity: isSettled ? 0.75 : 1 }}>
       <div className="flex justify-between items-center mb-1 gap-2">
@@ -1120,7 +1085,6 @@ const CompletedSessionItem = memo(function CompletedSessionItem({
     </div>
   );
 });
-
 // ==========================================
 // المكون الرئيسي: DASHBOARD
 // ==========================================
@@ -1131,7 +1095,6 @@ export default function GarageDashboard() {
     removeIncomingCar, fetchAll, confirmRevenue, assignSessionToValet, adjustGarageSpots,
     getMyOwnedGarages,
   } = useStore();
-
   const [garageRole] = useState<'owner' | 'valet'>(
     () => (localStorage.getItem('garageRole') as 'owner' | 'valet') || 'owner',
   );
@@ -1142,15 +1105,12 @@ export default function GarageDashboard() {
   const valetNumber = ownerValetView
     ? 'owner'
     : localStorage.getItem('valetNumber') || '';
-
   const garage = garages.find(g => g.id === currentGarageId);
   const garageCoords = useMemo(() => extractGarageCoords(garage), [garage]);
-
   const garageSessions = useMemo(
     () => sessions.filter(s => s.garageId === currentGarageId),
     [sessions, currentGarageId]
   );
-
   const currentValetNameLocal = ownerValetView ? '' : (localStorage.getItem('valetName') || '');
   const currentValetName = ownerValetView
     ? 'المالك'
@@ -1158,7 +1118,6 @@ export default function GarageDashboard() {
       valetNumber === '2' ? garage?.valetName2 :
       valetNumber === '3' ? garage?.valetName3 :
       '';
-
   const myValetNames = useMemo(() => {
     const names = new Set<string>();
     if (ownerValetView) {
@@ -1175,35 +1134,34 @@ export default function GarageDashboard() {
     }
     return names;
   }, [currentValetNameLocal, currentValetName, valetNumber, ownerValetView]);
-
   const geofenceState = useValetGeofence(isRealValet, garageCoords, GEOFENCE_RADIUS_METERS);
+  const geofenceStateRef = useRef<GeofenceState>(geofenceState);
+  geofenceStateRef.current = geofenceState;
 
   // 🧠 ذاكرة الموقع الأخير لمنع إرسال تحديثات متكررة بدون حركة
   const lastReportedCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastReportTimeRef = useRef<number>(0);
   const lastReportedInsideRef = useRef<boolean | null>(null);
-
-  const reportLocation = useCallback(async (isInside: boolean, distance: number | null, currentCoords: { lat: number; lng: number } | null) => {
+  const reportLocation = useCallback(async (isInside: boolean, distance: number | null, currentCoords: { lat: number; lng: number } | null, isHeartbeat = false) => {
     if (!isRealValet || !currentGarageId || !valetNumber) return;
     
     const now = Date.now();
     const statusChanged = lastReportedInsideRef.current !== isInside;
+    const timeSinceLastReport = now - lastReportTimeRef.current;
     
-    // 🛡️ فلتر الحركة الذكي: إذا لم تتغير الحالة، لا نرسل إلا إذا تحرك السايس حقيقياً أو مرت دقيقتين
-    if (!statusChanged && lastReportedCoordsRef.current && currentCoords) {
+    // 🛡️ فلتر الحركة الذكي: يمنع إغراق السيرفر عند اهتزاز الـ GPS مع الحفاظ على النبضة الدورية كل 30 ثانية ليظهر السايس متواجداً للمالك
+    if (!statusChanged && !isHeartbeat && lastReportedCoordsRef.current && currentCoords) {
       const distanceMoved = haversineDistance(
         lastReportedCoordsRef.current.lat,
         lastReportedCoordsRef.current.lng,
         currentCoords.lat,
         currentCoords.lng
       );
-      const timeSinceLastReport = now - lastReportTimeRef.current;
       
-      if (distanceMoved < VALET_MIN_MOVE_METERS && timeSinceLastReport < 120000) {
+      if (distanceMoved < VALET_MIN_MOVE_METERS && timeSinceLastReport < VALET_PING_INTERVAL_MS) {
         return; 
       }
     }
-
     try {
       await supabase.from('valet_locations').upsert(
         {
@@ -1229,41 +1187,45 @@ export default function GarageDashboard() {
   useEffect(() => {
     if (!isRealValet || geofenceState.status === 'loading') return;
     const isInside = geofenceState.status === 'inside';
-    
-    reportLocation(isInside, geofenceState.distance, geofenceState.coords || null);
+    reportLocation(isInside, geofenceState.distance, geofenceState.coords || null, false);
+  }, [isRealValet, geofenceState.status, geofenceState.distance, reportLocation]);
+
+  useEffect(() => {
+    if (!isRealValet) return;
     const interval = setInterval(() => {
-      reportLocation(isInside, geofenceState.distance, geofenceState.coords || null);
+      const current = geofenceStateRef.current;
+      if (current.status === 'loading') return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      reportLocation(current.status === 'inside', current.distance, current.coords || null, true);
     }, VALET_PING_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isRealValet, geofenceState.status, geofenceState.distance, geofenceState.coords, reportLocation]);
+  }, [isRealValet, reportLocation]);
 
   useEffect(() => {
     if (!isRealValet) return;
     const handleVisibilityChange = () => {
+      const current = geofenceStateRef.current;
       if (document.visibilityState === 'hidden') {
-        if (geofenceState.status === 'inside') {
-          reportLocation(true, geofenceState.distance, geofenceState.coords || null);
+        if (current.status === 'inside') {
+          reportLocation(true, current.distance, current.coords || null, true);
         }
       } else if (document.visibilityState === 'visible') {
         if (garageCoords) {
           navigator.geolocation?.getCurrentPosition((pos) => {
             const dist = haversineDistance(pos.coords.latitude, pos.coords.longitude, garageCoords.lat, garageCoords.lng);
-            reportLocation(dist <= GEOFENCE_RADIUS_METERS, Math.round(dist), { lat: pos.coords.latitude, lng: pos.coords.longitude });
+            reportLocation(dist <= GEOFENCE_RADIUS_METERS, Math.round(dist), { lat: pos.coords.latitude, lng: pos.coords.longitude }, true);
           }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
         }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRealValet, geofenceState.status, geofenceState.distance, geofenceState.coords, garageCoords, reportLocation]);
-
+  }, [isRealValet, garageCoords, reportLocation]);
   const valetLocations = useOwnerValetLocations(isOwner, currentGarageId, garage);
   const isValetBlocked = isRealValet && geofenceState.status !== 'inside';
-
   const handleGeofenceRetry = useCallback(() => {
     window.location.reload();
   }, []);
-
   const activeSessions = useMemo(() => {
     return garageSessions.filter(s => {
       if (s.status !== 'active') return false;
@@ -1274,7 +1236,6 @@ export default function GarageDashboard() {
       return true;
     });
   }, [garageSessions]);
-
   const valetActiveSessions = useMemo(() => {
     if (!isValet) return activeSessions;
     if (ownerValetView) return activeSessions; 
@@ -1285,24 +1246,21 @@ export default function GarageDashboard() {
     if (!isActive) return [];
     return activeSessions;
   }, [activeSessions, isValet, valetNumber, garage, ownerValetView]);
-
   const completedSessions = useMemo(
     () => garageSessions.filter(s => s.status === 'completed'),
     [garageSessions]
   );
-
   const garageOffers = useMemo(
     () => offers.filter(o => o.garageId === currentGarageId && o.status === 'pending'),
     [offers, currentGarageId]
   );
-
   const carsOnTheWay = useMemo(
     () => incomingCars.filter(c => c.garageId === currentGarageId && c.status === 'coming'),
     [incomingCars, currentGarageId]
   );
-
   const processedCarsRef = useRef<Set<string>>(new Set());
   const isEndingSessionRef = useRef(false);
+  const isAddingCarRef = useRef(false);
   const prevIncomingIdsRef = useRef<Set<string>>(new Set());
   
   const [undoableSessions, setUndoableSessions] = useState<UndoableSession[]>([]);
@@ -1311,7 +1269,6 @@ export default function GarageDashboard() {
   const [showAddCar, setShowAddCar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showValetQrModal, setShowValetQrModal] = useState(false);
-
   const [logDateFrom, setLogDateFrom] = useState(() => getLocalToday());
   const [logDateTo, setLogDateTo] = useState(() => getLocalToday());
   const [logPaymentFilter, setLogPaymentFilter] = useState<string>('all');
@@ -1326,13 +1283,11 @@ export default function GarageDashboard() {
   const [selectedValetFilter, setSelectedValetFilter] = useState<string | null>(null);
   const [plateSearch, setPlateSearch] = useState('');
   const [showSwitcher, setShowSwitcher] = useState(false);
-
   useEffect(() => {
     if (isValet && 'Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [isValet]);
-
   useEffect(() => {
     const ids = new Set((carsOnTheWay || []).map(c => c.id));
     if (carsOnTheWay && carsOnTheWay.length > 0) {
@@ -1347,14 +1302,11 @@ export default function GarageDashboard() {
     }
     prevIncomingIdsRef.current = ids;
   }, [carsOnTheWay, isValet]);
-
   const myGarages = useMemo(() => {
     if (!garage) return [];
     return getMyOwnedGarages(garage.ownerPhone || garage.phone || '');
   }, [getMyOwnedGarages, garage]);
-
   const assignedSessionIdsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if (!isRealValet || !currentGarageId) return;
     const currentValet = currentValetNameLocal || currentValetName || `فالية ${valetNumber}`;
@@ -1369,44 +1321,13 @@ export default function GarageDashboard() {
       const ab = String((s as any).addedBy || '').trim();
       return isToday && !ab;
     });
-
     unassignedCompletedSessions.forEach(s => {
       assignedSessionIdsRef.current.add(s.id);
       assignSessionToValet(s.id, currentValet);
     });
   }, [sessions, isRealValet, currentGarageId, currentValetNameLocal, currentValetName, valetNumber, assignSessionToValet]);
-
   const fetchGarageDailyStats = useCallback(async () => {}, []);
-
-  // 🚀 نظام Realtime ذكي مع Debouncing لمنع استنزاف قاعدة البيانات
-  useEffect(() => {
-    if (!currentGarageId) return;
-    
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const triggerDebouncedFetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          await fetchAll();
-        } catch (err) {
-          console.error('Garage realtime fetch error:', err);
-        }
-      }, 2000);
-    };
-
-    const channel = supabase
-      .channel(`garage-realtime-${currentGarageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_cars', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `garage_id=eq.${currentGarageId}` }, triggerDebouncedFetch)
-      .subscribe();
-      
-    return () => { 
-      if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channel); 
-    };
-  }, [currentGarageId, fetchAll]);
-
+  // 🚀 التحديثات اللحظية لـ sessions و incoming_cars و offers تتم في الذاكرة مباشرة عبر store.ts (parq_realtime_delta_v2) بدون أي طلبات fetchAll إضافية
   useEffect(() => {
     if (!currentGarageId) return;
     try {
@@ -1415,7 +1336,6 @@ export default function GarageDashboard() {
       console.warn('Push subscription failed:', err);
     }
   }, [currentGarageId]);
-
   const getSessionRevenue = useCallback((s: any) => {
     if (s.totalPrice != null) return Number(s.totalPrice);
     if (s.endTime && s.startTime) {
@@ -1428,7 +1348,6 @@ export default function GarageDashboard() {
     }
     return 0;
   }, [garage?.basePrice, garage?.pricePerHour]);
-
   const getSessionCommission = useCallback((s: any) => {
     if (s.source !== 'app') return 0;
     const rev = getSessionRevenue(s);
@@ -1436,14 +1355,12 @@ export default function GarageDashboard() {
     const rate = garage?.commissionRate ?? 10;
     return Math.round((rev * rate / 100) * 100) / 100;
   }, [getSessionRevenue, garage?.commissionRate]);
-
   const getSessionNetRevenue = useCallback((s: any) => {
     const rev = getSessionRevenue(s);
     if (s.source !== 'app') return rev;
     const comm = getSessionCommission(s);
     return Math.round((rev - comm) * 100) / 100;
   }, [getSessionRevenue, getSessionCommission]);
-
   const getActiveCost = useCallback((s: any) => {
     if (!s) return 0;
     const st = toMs(s.startTime);
@@ -1455,7 +1372,6 @@ export default function GarageDashboard() {
     const isFreeApplied = s.source === 'app' && (s.isFirstFreeSession === true || s.isFreeSession === true);
     return calculateCostWithLoyalty(el, r, isFreeApplied).cost;
   }, [garage?.basePrice, garage?.pricePerHour]);
-
   const filteredCompleted = useMemo(() => {
     if (isRealValet) {
       const isActive =
@@ -1498,7 +1414,6 @@ export default function GarageDashboard() {
       return true;
     });
   }, [completedSessions, logDateFrom, logDateTo, logPaymentFilter, isValet, isRealValet, isOwner, ownerValetView, myValetNames, selectedValetFilter, valetNumber, garage]);
-
   const filteredStats = useMemo(() => {
     const c = filteredCompleted.filter(s => s.revenueConfirmed);
     const u = filteredCompleted.filter(s => !s.revenueConfirmed);
@@ -1528,7 +1443,6 @@ export default function GarageDashboard() {
       activeWallet, activeCommission,
     };
   }, [filteredCompleted, getSessionRevenue, getSessionCommission, getSessionNetRevenue]);
-
   const valetReport = useMemo(() => {
     if (!garage || !isOwner || !currentGarageId) return [];
     const garageValets = [
@@ -1539,7 +1453,6 @@ export default function GarageDashboard() {
     
     const boundaryFrom = logDateFrom ? new Date(`${logDateFrom}T00:00:00`).getTime() : 0;
     const boundaryTo = logDateTo ? new Date(`${logDateTo}T23:59:59.999`).getTime() : 0;
-
     const ownerGarageCompleted = completedSessions.filter((s) => {
       if (s.garageId !== currentGarageId) return false;
       const endMs = toMs(s.endTime || s.startTime);
@@ -1568,7 +1481,6 @@ export default function GarageDashboard() {
       };
     }).filter((v) => v.count > 0);
   }, [garage, isOwner, currentGarageId, completedSessions, logDateFrom, logDateTo, logPaymentFilter, getSessionRevenue]);
-
   const handleUndoSession = useCallback((un: UndoableSession) => {
     if (!garage) return;
     removeSession(un.sessionId);
@@ -1579,11 +1491,9 @@ export default function GarageDashboard() {
     setUndoableSessions(p => p.filter(u => u.sessionId !== un.sessionId && u.localId !== un.localId));
     toast('تم إلغاء ' + un.carPlate + ' ↩️', { icon: '🔙' });
   }, [garage, removeSession]);
-
   const getUndoRemainingSeconds = useCallback((addedAt: number) => {
     return Math.max(0, UNDO_TIMEOUT_SECONDS - Math.floor((getServerNow() - addedAt) / 1000));
   }, []);
-
   // 🚀 مصالحة الـ Session ID القادمة من السيرفر عند وجود Fallback دون تشغيل مؤقت ثانية متكرر
   useEffect(() => {
     if (undoableSessions.length === 0) return;
@@ -1602,14 +1512,12 @@ export default function GarageDashboard() {
       return changed ? updated : prev;
     });
   }, [sessions, undoableSessions.length]);
-
   const handleConfirmRevenueFromItem = useCallback(async (id: string, valet: string) => {
     if (valet) await assignSessionToValet(id, valet);
     await confirmRevenue(id, valet); 
     await fetchGarageDailyStats(); 
     toast.success('تأكيد ✅'); 
   }, [assignSessionToValet, confirmRevenue, fetchGarageDailyStats]);
-
   if (isValetBlocked && garage) {
     return (
       <ValetGeofenceBlockScreen
@@ -1621,7 +1529,6 @@ export default function GarageDashboard() {
       />
     );
   }
-
   if (!garage) {
     return (
       <div className="h-full flex flex-col items-center justify-center px-6" style={{ background: BRAND.bg, color: BRAND.navy }}>
@@ -1633,39 +1540,42 @@ export default function GarageDashboard() {
       </div>
     );
   }
-
   const handleAddCar = async () => {
+    if (isAddingCarRef.current) return;
     if (!newCarPlate.trim()) { toast.error('أدخل رقم السيارة'); return; }
-    const cp = newCarPlate.trim(); 
-    const pr = Number(newCarPrice) > 0 ? Number(newCarPrice) : Number(garage.basePrice || 15); 
-    const at = getServerNow();
-    const startTimeISO = new Date(at).toISOString();
-    
-    const sid = await addSession({ 
-      garageId: garage.id, 
-      carPlate: cp, 
-      startTime: startTimeISO, 
-      status: 'active', 
-      source: 'manual', 
-      agreedPrice: pr, 
-      addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
-    } as any);
-    
-    const fid = sid || `fallback-${at}`;
-    const newUndoItem: UndoableSession = { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at };
-    setUndoableSessions(p => [...p, newUndoItem]);
+    isAddingCarRef.current = true;
+    try {
+      const cp = newCarPlate.trim(); 
+      const pr = Number(newCarPrice) > 0 ? Number(newCarPrice) : Number(garage.basePrice || 15); 
+      const at = getServerNow();
+      const startTimeISO = new Date(at).toISOString();
+      
+      setNewCarPlate(''); 
+      setNewCarPrice(garage.basePrice); 
+      setShowAddCar(false);
 
-    // 🚀 جدولة تنظيف العنصر الفردي بدلاً من تشغيل عداد ثوانٍ على مستوى الصفحة
-    setTimeout(() => {
-      setUndoableSessions(p => p.filter(u => u.addedAt !== at));
-    }, UNDO_TIMEOUT_SECONDS * 1000);
-
-    toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
-    setNewCarPlate(''); 
-    setNewCarPrice(garage.basePrice); 
-    setShowAddCar(false);
+      const sid = await addSession({ 
+        garageId: garage.id, 
+        carPlate: cp, 
+        startTime: startTimeISO, 
+        status: 'active', 
+        source: 'manual', 
+        agreedPrice: pr, 
+        addedBy: isValet ? (currentValetNameLocal || currentValetName || `فالية ${valetNumber}`) : '' 
+      } as any);
+      
+      const fid = sid || `fallback-${at}`;
+      const newUndoItem: UndoableSession = { sessionId: fid, localId: fid, carPlate: cp, price: pr, addedAt: at };
+      setUndoableSessions(p => [...p, newUndoItem]);
+      // 🚀 جدولة تنظيف العنصر الفردي بدلاً من تشغيل عداد ثوانٍ على مستوى الصفحة
+      setTimeout(() => {
+        setUndoableSessions(p => p.filter(u => u.addedAt !== at));
+      }, UNDO_TIMEOUT_SECONDS * 1000);
+      toast.success(`تم إضافة السيارة بسعر ${pr} ج.م/ساعة`);
+    } finally {
+      setTimeout(() => { isAddingCarRef.current = false; }, 500);
+    }
   };
-
   const openConfirmPayment = (sid: string, cp: string, cost: number, hrs: number, minutes: number, source: 'app' | 'manual', ap?: number) => {
     const sessionObj = activeSessions.find(s => s.id === sid);
     const isFreeApplied = sessionObj?.source === 'app' && (sessionObj?.isFirstFreeSession === true || sessionObj?.isFreeSession === true);
@@ -1676,11 +1586,9 @@ export default function GarageDashboard() {
     const agreedNum = Number(ap ?? sessionObj?.agreedPrice);
     const baseNum = Number(garage.basePrice ?? garage.pricePerHour ?? 15);
     const rate = agreedNum > 0 ? agreedNum : (baseNum > 0 ? baseNum : 15);
-
     const pricing = calculateCostWithLoyalty(el, rate, isFreeApplied);
     const finalCost = el > 0 ? pricing.cost : (cost > 0 ? cost : getActiveCost(sessionObj));
     const finalHours = el > 0 ? pricing.paidHours : hrs;
-
     setConfirmSession({ 
       id: sid, 
       carPlate: cp, 
@@ -1693,7 +1601,6 @@ export default function GarageDashboard() {
     });
     setPlateSearch('');
   };
-
   const handleConfirmPayment = async (selectedPaymentMethod: string) => {
     if (!confirmSession || isEndingSessionRef.current) return;
     isEndingSessionRef.current = true;
@@ -1729,23 +1636,22 @@ export default function GarageDashboard() {
       setTimeout(() => { isEndingSessionRef.current = false; }, 800); 
     }
   };
-
   const handleSaveSettings = (settingsData: any) => {
     updateGarage(garage.id, settingsData);
     toast.success('تم تحديث الإعدادات ⚡'); 
     setShowSettings(false);
   };
-
   const handleCarArrived = async (car: any) => {
     const carId: string = car.id; 
     const carPlate: string = car.carPlate;
-    if (processedCarsRef.current.has(carId)) return;
+    const np = normalizePlate(carPlate);
+    if (processedCarsRef.current.has(carId) || processedCarsRef.current.has(np)) return;
     processedCarsRef.current.add(carId);
+    processedCarsRef.current.add(np);
     
     pausePolling(2000);
     
     try {
-      const np = normalizePlate(carPlate);
       const existing = useStore.getState().sessions.find(s => normalizePlate(s.carPlate) === np && s.status === 'active');
       if (existing) { 
         await removeIncomingCar(carId); 
@@ -1759,7 +1665,6 @@ export default function GarageDashboard() {
       const agreedNum = Number(car.agreedPrice);
       const baseNum = Number(garage.basePrice ?? garage.pricePerHour ?? 15);
       const resolvedPrice = agreedNum > 0 ? agreedNum : (baseNum > 0 ? baseNum : 15);
-
       await addSession({ 
         garageId: garage.id, 
         carPlate: np, 
@@ -1779,15 +1684,17 @@ export default function GarageDashboard() {
       toast.success(`بدأ حساب ${carPlate} 🚗`);
     } catch (e) { 
       processedCarsRef.current.delete(carId); 
+      processedCarsRef.current.delete(np);
       toast.error('حدث خطأ، حاول مرة أخرى'); 
     } finally {
       pausePolling(0);
+      setTimeout(() => {
+        processedCarsRef.current.delete(np);
+      }, 3000);
     }
   };
-
   const calculateRemainingTime = (st: number | string, em: number) =>
     Math.max(0, em - Math.floor((getServerNow() - toMs(st)) / 60000));
-
   return (
     <div className="h-full overflow-y-auto" style={{ background: BRAND.bg, color: BRAND.navy, padding: 16 }}>
       {/* Header */}
@@ -1860,7 +1767,6 @@ export default function GarageDashboard() {
         )}
         {isValet && <div style={{ width: 44 }} />}
       </div>
-
       {ownerValetView && (
         <div 
           onClick={() => {
@@ -1880,9 +1786,7 @@ export default function GarageDashboard() {
           </div>
         </div>
       )}
-
       {isOwner && <OwnerValetLocationBanner valetLocations={valetLocations} />}
-
       {/* Settings Modal المعزول */}
       <GarageSettingsModal
         isOpen={isOwner && showSettings}
@@ -1891,7 +1795,6 @@ export default function GarageDashboard() {
         onSave={handleSaveSettings}
         updateGarage={updateGarage}
       />
-
       {/* Confirm Payment Modal المعزول */}
       <ConfirmPaymentModal
         confirmSession={confirmSession}
@@ -1899,7 +1802,6 @@ export default function GarageDashboard() {
         onConfirm={handleConfirmPayment}
         onClose={() => setConfirmSession(null)}
       />
-
       {isValet && (
         <>
           <div
@@ -1933,7 +1835,6 @@ export default function GarageDashboard() {
             </div>
             <QrCode size={18} style={{ color: BRAND.blue }} className="shrink-0" />
           </div>
-
           {carsOnTheWay.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-2 text-right text-xs" style={{ color: BRAND.blue }}>
@@ -1968,7 +1869,6 @@ export default function GarageDashboard() {
               </div>
             </div>
           )}
-
           {garageOffers.length > 0 && (
             <div className="mb-5">
               <h3 className="font-black mb-2 text-right text-xs" style={{ color: '#f59e0b' }}>عروض أسعار معلقة ({garageOffers.length})</h3>
@@ -1985,7 +1885,6 @@ export default function GarageDashboard() {
               </div>
             </div>
           )}
-
           <div className="mb-5">
             {!showAddCar ? (
               <button type="button" onClick={() => setShowAddCar(true)} disabled={garage.availableSpots <= 0} className="w-full font-black flex items-center justify-center gap-2 py-3.5 rounded-xl text-white border-0 cursor-pointer text-xs bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400"><Plus size={16} /> {garage.availableSpots > 0 ? 'إضافة سيارة جديدة' : 'لا توجد أماكن'}</button>
@@ -2007,7 +1906,6 @@ export default function GarageDashboard() {
               </div>
             )}
           </div>
-
           <div className="mb-5">
             <h3 className="font-black mb-3 text-right text-xs" style={{ color: BRAND.navy }}>الجلسات النشطة ({valetActiveSessions.length})</h3>
             {valetActiveSessions.length > 0 && (
@@ -2035,7 +1933,6 @@ export default function GarageDashboard() {
           </div>
         </>
       )}
-
       {/* Valet info bar */}
       {isValet && (
         <div className="mb-4 p-3 border rounded-xl bg-white border-slate-200">
@@ -2057,7 +1954,6 @@ export default function GarageDashboard() {
           )}
         </div>
       )}
-
       {/* سجل العمليات */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
@@ -2188,7 +2084,6 @@ export default function GarageDashboard() {
           )}
         </div>
       </div>
-
       <AnimatePresence>
         {showValetQrModal && (
           <div
@@ -2265,7 +2160,6 @@ export default function GarageDashboard() {
           </div>
         )}
       </AnimatePresence>
-
       <AnimatePresence>
         {showSwitcher && (
           <div className="fixed inset-0 z-[10000] flex items-end justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowSwitcher(false)}>

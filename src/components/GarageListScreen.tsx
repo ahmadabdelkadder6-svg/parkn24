@@ -1,4 +1,3 @@
-
 // src/components/GarageListScreen.tsx
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,7 +32,7 @@ const BRAND = {
 };
 
 const MIN_UI_MOVE_METERS = 25;
-const FETCH_THROTTLE_MS = 3500;
+const LAST_COORDS_STORAGE_KEY = 'parkn24_last_user_coords';
 
 interface GarageWithDistance extends Garage {
   distance: number;
@@ -153,15 +152,12 @@ const DIRECT_AREA_MAP: Record<string, string> = {
 
 // ⚡ كاش ذكي لتسريع الـ RegEx ومنع هبوط الفريمات مع سقف أمان للذاكرة
 const canonicalAreaCache = new Map<string, string>();
-
 export const getCanonicalArea = (rawArea?: string, name: string = '', location: string = ''): string => {
   const cacheKey = `${rawArea || ''}__${name}__${location}`;
   const cached = canonicalAreaCache.get(cacheKey);
   if (cached) return cached;
-
   let result = 'وسط البلد والزمالك';
   const trimmed = (rawArea || '').trim();
-
   if (trimmed && (OFFICIAL_AREAS as readonly string[]).includes(trimmed)) {
     result = trimmed;
   } else if (trimmed && DIRECT_AREA_MAP[trimmed]) {
@@ -195,7 +191,6 @@ export const getCanonicalArea = (rawArea?: string, name: string = '', location: 
       result = 'وسط البلد والزمالك';
     }
   }
-
   if (canonicalAreaCache.size > 2000) {
     canonicalAreaCache.clear();
   }
@@ -222,7 +217,7 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
 export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
-    offers, fetchAll, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
+    offers, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
     chargeBookingFee, addIncomingCar, getDailyDeductionCount
   } = useStore();
 
@@ -237,17 +232,38 @@ export default function GarageListScreen() {
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
   const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({ lat: 30.0444, lng: 31.2357 });
+
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(() => {
+    try {
+      const saved = localStorage.getItem(LAST_COORDS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed &&
+          typeof parsed.lat === 'number' &&
+          Number.isFinite(parsed.lat) &&
+          typeof parsed.lng === 'number' &&
+          Number.isFinite(parsed.lng)
+        ) {
+          return { lat: parsed.lat, lng: parsed.lng };
+        }
+      }
+    } catch {}
+    return { lat: 30.0444, lng: 31.2357 };
+  });
+
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
-  
+
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
-  
+
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
+
   const isMountedRef = useRef(true);
+  const bookingLockRef = useRef(false);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const speedHistoryRef = useRef<number[]>([]);
@@ -255,7 +271,7 @@ export default function GarageListScreen() {
   const stopStartTimeRef = useRef<number | null>(null);
   const totalStopDurationRef = useRef<number>(0);
   const lastGpsTickRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
-  const lastFetchTimestampRef = useRef<number>(0);
+  const toastedTopupIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -268,11 +284,11 @@ export default function GarageListScreen() {
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
     return sessions
-      .filter((s: Session & { customerPhone?: string }) => {
+      .filter((s: Session & { customerPhone?: string; userPhone?: string }) => {
         if (s.status !== 'active') return false;
         if (acknowledgedSessionIds?.has(s.id)) return false;
-        const samePlate = normalizePlate(s.carPlate) === normalizedUserPlate;
-        const sPhoneClean = s.customerPhone ? normalizePhone(s.customerPhone) : '';
+        const samePlate = Boolean(normalizedUserPlate && normalizePlate(s.carPlate) === normalizedUserPlate);
+        const sPhoneClean = normalizePhone(s.customerPhone || s.userPhone || (s as any).user_phone || '');
         return samePlate || Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
@@ -280,19 +296,32 @@ export default function GarageListScreen() {
 
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
-    return sessions.some((s: Session) => normalizePlate(s.carPlate) === normalizedUserPlate && s.status === 'completed');
-  }, [sessions, normalizedUserPlate, activeSession]);
+    return sessions.some((s: Session & { customerPhone?: string; userPhone?: string }) => {
+      if (s.status !== 'completed') return false;
+      const samePlate = Boolean(normalizedUserPlate && normalizePlate(s.carPlate) === normalizedUserPlate);
+      const sPhoneClean = normalizePhone(s.customerPhone || s.userPhone || (s as any).user_phone || '');
+      return samePlate || Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
+    });
+  }, [sessions, normalizedUserPlate, cleanUserPhone, activeSession]);
 
   const myIncomingCar = useMemo(() => {
-    if (!normalizedUserPlate) return undefined;
+    if (!normalizedUserPlate && !cleanUserPhone) return undefined;
     return incomingCars
-      .filter((c: IncomingCar) => normalizePlate(c.carPlate) === normalizedUserPlate && c.status === 'coming')
+      .filter((c: IncomingCar) => {
+        if (c.status !== 'coming') return false;
+        const samePlate = Boolean(normalizedUserPlate && normalizePlate(c.carPlate) === normalizedUserPlate);
+        const cPhoneClean = normalizePhone(c.customerPhone || (c as any).userPhone || '');
+        return samePlate || Boolean(cleanUserPhone && cPhoneClean === cleanUserPhone);
+      })
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
-  }, [incomingCars, normalizedUserPlate]);
+  }, [incomingCars, normalizedUserPlate, cleanUserPhone]);
 
   const myTopUps = useMemo(() => {
     if (!cleanUserPhone || !walletTopUps) return [];
-    return walletTopUps.filter((w) => w.userPhone === cleanUserPhone).sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
+    return walletTopUps
+      .filter((w) => normalizePhone(w.userPhone || w.phone || '') === cleanUserPhone)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 3);
   }, [walletTopUps, cleanUserPhone]);
 
   const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
@@ -305,6 +334,7 @@ export default function GarageListScreen() {
     offers,
     cleanUserPhone
   });
+
   useEffect(() => {
     bookingContextRef.current = {
       currentUser,
@@ -314,17 +344,6 @@ export default function GarageListScreen() {
       cleanUserPhone
     };
   }, [currentUser, activeSession, myIncomingCar, offers, cleanUserPhone]);
-
-  const throttledFetchAll = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastFetchTimestampRef.current < FETCH_THROTTLE_MS) return;
-    lastFetchTimestampRef.current = now;
-    try {
-      await fetchAll();
-    } catch (e) {
-      console.warn('Realtime fetch throttled error:', e);
-    }
-  }, [fetchAll]);
 
   const stopGpsWatch = useCallback(() => {
     if (watchIdRef.current !== null && 'geolocation' in navigator) {
@@ -341,15 +360,17 @@ export default function GarageListScreen() {
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       return;
     }
-
     stopGpsWatch();
     setLocationLoading(true);
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (!isMountedRef.current) return;
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        lastLocationRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setUserLocation(coords);
+        lastLocationRef.current = coords;
+        try {
+          localStorage.setItem(LAST_COORDS_STORAGE_KEY, JSON.stringify(coords));
+        } catch {}
         setLocationLoading(false);
       },
       () => {
@@ -357,7 +378,6 @@ export default function GarageListScreen() {
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
     );
-
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         if (!isMountedRef.current) return;
@@ -367,7 +387,6 @@ export default function GarageListScreen() {
         const rawHeading = position.coords.heading || 0;
         const nowMs = Date.now();
         let speedKmh = 0;
-
         if (rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) && rawSpeed >= 0) {
           speedKmh = rawSpeed * 3.6;
         } else if (lastGpsTickRef.current) {
@@ -385,7 +404,6 @@ export default function GarageListScreen() {
           bearingHistoryRef.current.push(rawHeading);
           if (bearingHistoryRef.current.length > 5) bearingHistoryRef.current.shift();
         }
-
         if (speedKmh < 1.0) {
           if (stopStartTimeRef.current === null) {
             stopStartTimeRef.current = Date.now();
@@ -395,7 +413,6 @@ export default function GarageListScreen() {
         } else {
           stopStartTimeRef.current = null;
         }
-
         let shouldUpdateUI = false;
         if (!lastLocationRef.current) {
           shouldUpdateUI = true;
@@ -405,10 +422,13 @@ export default function GarageListScreen() {
             shouldUpdateUI = true;
           }
         }
-
         if (shouldUpdateUI) {
-          lastLocationRef.current = { lat: newLat, lng: newLng };
-          setUserLocation({ lat: newLat, lng: newLng });
+          const coords = { lat: newLat, lng: newLng };
+          lastLocationRef.current = coords;
+          setUserLocation(coords);
+          try {
+            localStorage.setItem(LAST_COORDS_STORAGE_KEY, JSON.stringify(coords));
+          } catch {}
         }
         setLocationLoading(false);
       },
@@ -443,10 +463,9 @@ export default function GarageListScreen() {
     };
   }, [getUserLocation, stopGpsWatch]);
 
-  // 🔄 الاستماع لتحديثات شحن محفظة العميل الحالي فقط دون تسريب اتصالات أو إزعاج السيرفر
+  // 🔄 إشعار فوري للعميل عند اعتماد شحن محفظته (بدون استدعاء fetchAll لأن الـ Store يحدث الرصيد لحظياً في الذاكرة)
   useEffect(() => {
     if (!cleanUserPhone) return;
-
     const channelName = `garage-list-topup-${cleanUserPhone}`;
     const channel = supabase.channel(channelName)
       .on(
@@ -457,17 +476,18 @@ export default function GarageListScreen() {
           if (!row) return;
           const rowPhone = normalizePhone(row.user_phone || row.userPhone || '');
           if (rowPhone === cleanUserPhone && row.status === 'approved') {
-            throttledFetchAll();
-            toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${row.amount} ج.م بنجاح!`, { icon: '💳' });
+            if (!toastedTopupIdsRef.current.has(row.id)) {
+              toastedTopupIdsRef.current.add(row.id);
+              toast.success(`🎁 تم اعتماد شحن رصيد بمبلغ ${row.amount} ج.م بنجاح!`, { icon: '💳' });
+            }
           }
         }
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [cleanUserPhone, throttledFetchAll]);
+  }, [cleanUserPhone]);
 
   // حساب المسافات لجميع الجراجات مرتبة بالأقرب دائماً
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
@@ -552,6 +572,8 @@ export default function GarageListScreen() {
 
   // 💰 عملية الحجز والتوجيه الذكي (مستقرة مرجعياً 100% لمنع إعادة رسم الكروت)
   const handleGarageClick = useCallback(async (garage: GarageWithDistance) => {
+    if (bookingLockRef.current) return;
+
     const {
       currentUser: user,
       activeSession: currActiveSession,
@@ -608,13 +630,13 @@ export default function GarageListScreen() {
     const resolvedHourlyPrice = Number(garage.basePrice || garage.pricePerHour || 15) > 0
       ? Number(garage.basePrice || garage.pricePerHour || 15)
       : 15;
-
     const { hasPaidBookingFee } = useStore.getState();
     const userWallet = user.wallet || 0;
     const todayCount = getDailyDeductionCount();
     const isFreeToday = todayCount >= 2;
 
     if (hasPaidBookingFee) {
+      bookingLockRef.current = true;
       setIsBooking(true);
       try {
         await addIncomingCar({
@@ -632,6 +654,7 @@ export default function GarageListScreen() {
         console.error(e);
         toast.error('حدث خطأ أثناء تحويل الحجز');
       } finally {
+        bookingLockRef.current = false;
         setIsBooking(false);
       }
       return;
@@ -644,6 +667,7 @@ export default function GarageListScreen() {
       return;
     }
 
+    bookingLockRef.current = true;
     setIsBooking(true);
     try {
       const success = await chargeBookingFee();
@@ -671,6 +695,7 @@ export default function GarageListScreen() {
       console.error(e);
       toast.error('حدث خطأ أثناء إتمام الحجز');
     } finally {
+      bookingLockRef.current = false;
       setIsBooking(false);
     }
   }, [getDailyDeductionCount, addIncomingCar, setSelectedGarageId, setScreen, chargeBookingFee]);
@@ -681,7 +706,6 @@ export default function GarageListScreen() {
     setActiveDirectoryTrip(null);
     setActiveTab('directory');
     toast.success('حمد الله على سلامتك! نورت بركن من جديد 🌟', { duration: 3000 });
-
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(async (position) => {
         try {
@@ -802,7 +826,6 @@ export default function GarageListScreen() {
                 <Plus size={13} strokeWidth={3.5} />
               </div>
             </button>
-
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
@@ -812,7 +835,6 @@ export default function GarageListScreen() {
             >
               <QrCode size={20} strokeWidth={2.2} style={{ color: BRAND.blue }} />
             </button>
-
             <button
               type="button"
               onClick={() => setShowSmartMenu(true)}
@@ -933,6 +955,7 @@ export default function GarageListScreen() {
             </span>
           </button>
         )}
+
         {!activeSession && myIncomingCar && (
           <button
             type="button"
@@ -1082,7 +1105,6 @@ export default function GarageListScreen() {
                       </span>
                     </div>
                   </button>
-
                   {isExpanded && (
                     <div style={{ background: BRAND.bg, padding: '10px', borderTop: `1px solid ${BRAND.border}` }} className="space-y-2.5">
                       {(() => {
@@ -1667,7 +1689,6 @@ const GarageCard = memo(function GarageCard({
           )}
         </div>
       </div>
-
       <div className="flex items-start justify-between gap-2 mb-1" style={{ direction: 'rtl' }}>
         <h4 className="text-[13px] font-black leading-tight text-slate-950 flex-1">{garage.name}</h4>
       </div>
@@ -1675,7 +1696,6 @@ const GarageCard = memo(function GarageCard({
         <span className="truncate max-w-[280px]">{garage.location}</span>
         <MapPin size={11} className="text-slate-400 shrink-0" />
       </div>
-
       <div className="flex items-center justify-between mt-1.5 pt-2 border-t" style={{ borderColor: BRAND.border }}>
         <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
           <Navigation size={12} className="rotate-45" style={{ color: BRAND.blue }} />
@@ -1704,7 +1724,6 @@ const GarageCard = memo(function GarageCard({
           </div>
         </div>
       </div>
-
       <button
         type="button"
         disabled={isFull || disabled}

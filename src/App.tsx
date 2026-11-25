@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Toaster, toast } from 'react-hot-toast';
 import { useStore, setupRealtime, normalizePlate, normalizePhone, getServerNow } from './store';
 import { cn } from './utils/cn';
-
 // Lazy loading screens
 import AuthGate from './components/AuthGate';
 import SplashScreen from './components/SplashScreen';
@@ -72,6 +71,7 @@ const SessionWatcher = memo(function SessionWatcher({ dataLoaded }: { dataLoaded
   const sessions = useStore((s) => s.sessions);
   const incomingCars = useStore((s) => s.incomingCars);
   const acknowledgedSessionIds = useStore((s) => s.acknowledgedSessionIds);
+  const selectedGarageId = useStore((s) => s.selectedGarageId);
   const setSelectedGarageId = useStore((s) => s.setSelectedGarageId);
 
   const prevActiveSessionRef = useRef<string | null>(null);
@@ -80,7 +80,7 @@ const SessionWatcher = memo(function SessionWatcher({ dataLoaded }: { dataLoaded
   const sessionEndToastShown = useRef(false);
   const sessionTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. مراقبة الجلسات وتوجيه المستخدم التلقائي
+  // 1. مراقبة الجلسات وتوجيه المستخدم التلقائي مع الحفاظ على آخر شاشة وقف عليها العميل
   useEffect(() => {
     if (!dataLoaded || !currentUser || view !== 'user') return;
 
@@ -112,30 +112,49 @@ const SessionWatcher = memo(function SessionWatcher({ dataLoaded }: { dataLoaded
         sessionTransitionTimer.current = null;
       }
 
-      if (myActiveSession.id !== prevActiveSessionRef.current) {
-        prevActiveSessionRef.current = myActiveSession.id;
+      if (selectedGarageId !== myActiveSession.garageId) {
         setSelectedGarageId(myActiveSession.garageId);
-        if (screen === 'navigation' || screen === 'waiting' || screen === 'splash') {
-          setScreen('session');
-        }
+        safeLocalStorage.setItem('selectedGarageId', myActiveSession.garageId);
+      }
+
+      const isNewSessionActivation = myActiveSession.id !== prevActiveSessionRef.current;
+      prevActiveSessionRef.current = myActiveSession.id;
+
+      // إذا كان العميل في شاشة الانتظار أو التوجيه أو السبلاش وبدأت الجلسة، ينتقل تلقائياً لشاشة الجلسة
+      // أما إذا كان العميل قد اختار بنفسه الوقوف على الرئيسية (list) أو الجلسة (session) فيبقى على شاشته المحفوظة
+      const savedLastScreen = safeLocalStorage.getItem('lastUserScreen') || safeLocalStorage.getItem('appScreen');
+      if (
+        screen === 'waiting' ||
+        screen === 'splash' ||
+        (isNewSessionActivation && screen === 'navigation' && savedLastScreen !== 'navigation')
+      ) {
+        setScreen('session');
+        safeLocalStorage.setItem('appScreen', 'session');
+        safeLocalStorage.setItem('lastUserScreen', 'session');
+      } else if (savedLastScreen === 'session' && screen !== 'session' && screen !== 'chat' && screen !== 'list') {
+        setScreen('session');
       }
       return;
     }
 
     if (myIncoming) {
-      setSelectedGarageId(myIncoming.garageId);
-      if (!['navigation', 'session', 'list', 'lastSession'].includes(screen)) {
+      if (selectedGarageId !== myIncoming.garageId) {
+        setSelectedGarageId(myIncoming.garageId);
+        safeLocalStorage.setItem('selectedGarageId', myIncoming.garageId);
+      }
+      if (!['navigation', 'session', 'list', 'lastSession', 'chat'].includes(screen)) {
         setScreen('navigation');
+        safeLocalStorage.setItem('appScreen', 'navigation');
+        safeLocalStorage.setItem('lastUserScreen', 'navigation');
       }
       return;
     }
 
-    // انتهاء الجلسة والرجوع لشاشة القائمة
-    if (prevActiveSessionRef.current) {
+    // انتهاء الجلسة والرجوع لشاشة القائمة (أو في حال فتح التطبيق على شاشة جلسة لم تعد نشطة)
+    if (prevActiveSessionRef.current || screen === 'session' || screen === 'waiting') {
       noSessionCountRef.current += 1;
-      const timeSinceLastActive = getServerNow() - lastActiveTimeRef.current;
-      if (noSessionCountRef.current < 3 || timeSinceLastActive < 8000) return;
-
+      const timeSinceLastActive = lastActiveTimeRef.current > 0 ? getServerNow() - lastActiveTimeRef.current : 9000;
+      if (prevActiveSessionRef.current && (noSessionCountRef.current < 3 || timeSinceLastActive < 8000)) return;
       if (sessionTransitionTimer.current) return;
 
       sessionTransitionTimer.current = setTimeout(() => {
@@ -158,21 +177,35 @@ const SessionWatcher = memo(function SessionWatcher({ dataLoaded }: { dataLoaded
           return;
         }
 
+        const wasTrackingSession = Boolean(prevActiveSessionRef.current);
         prevActiveSessionRef.current = null;
         noSessionCountRef.current = 0;
 
-        if (['session', 'navigation', 'waiting'].includes(freshState.screen)) {
-          if (!sessionEndToastShown.current) {
+        if (['session', 'waiting'].includes(freshState.screen) || (wasTrackingSession && freshState.screen === 'navigation')) {
+          if (wasTrackingSession && !sessionEndToastShown.current) {
             sessionEndToastShown.current = true;
             toast.success('تم إنهاء الجلسة والعودة للرئيسية ✅');
           }
           setSelectedGarageId(null);
           safeLocalStorage.removeItem('selectedGarageId');
+          safeLocalStorage.setItem('appScreen', 'list');
+          safeLocalStorage.setItem('lastUserScreen', 'list');
           setScreen('list');
         }
       }, 3000);
     }
-  }, [sessions, incomingCars, currentUser, view, screen, dataLoaded, acknowledgedSessionIds, setSelectedGarageId, setScreen]);
+  }, [
+    sessions,
+    incomingCars,
+    currentUser,
+    view,
+    screen,
+    dataLoaded,
+    acknowledgedSessionIds,
+    selectedGarageId,
+    setSelectedGarageId,
+    setScreen
+  ]);
 
   useEffect(() => {
     return () => {
@@ -212,7 +245,6 @@ const ParkLanding = memo(function ParkLanding({ onEnter }: { onEnter: () => void
             <img src="/hero-car.webp?v=999" alt="Park'n 24 Car" loading="eager" className="w-full h-full object-cover object-center" />
             <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/40 to-slate-950/95" />
           </div>
-
           <motion.nav initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="w-full flex items-center justify-between px-6 py-6 z-20 relative" dir="ltr">
             <div className="flex flex-col leading-tight">
               <span className="font-black text-white text-base">بركن <span className="text-[#8cc63f]">24</span></span>
@@ -220,7 +252,6 @@ const ParkLanding = memo(function ParkLanding({ onEnter }: { onEnter: () => void
             </div>
             <button onClick={handleEnter} className="px-4 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white font-bold text-xs border border-white/20">تخطي ✕</button>
           </motion.nav>
-
           <div className="px-6 pb-10 z-20 relative flex flex-col justify-end max-w-lg mx-auto w-full" dir="rtl">
             <h1 className="text-4xl sm:text-5xl font-black text-white leading-tight">
               انسى لفة كل يوم..<br /><span className="text-blue-400">ركنتك مضمونة</span><br /><span className="text-[#8cc63f]">قبل ما توصل!</span>
@@ -241,6 +272,7 @@ const ParkLanding = memo(function ParkLanding({ onEnter }: { onEnter: () => void
 });
 
 const VALID_SCREENS = ['splash', 'list', 'waiting', 'navigation', 'session', 'lastSession', 'chat'] as const;
+const PERSISTENT_USER_SCREENS = ['list', 'waiting', 'navigation', 'session', 'lastSession', 'chat'] as const;
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -250,9 +282,15 @@ export default function App() {
   const currentUser = useStore((s) => s.currentUser);
   const currentGarageId = useStore((s) => s.currentGarageId);
   const setCurrentGarageId = useStore((s) => s.setCurrentGarageId);
+  const selectedGarageId = useStore((s) => s.selectedGarageId);
+  const setSelectedGarageId = useStore((s) => s.setSelectedGarageId);
+  const garages = useStore((s) => s.garages);
   const fetchAll = useStore((s) => s.fetchAll);
 
-  const [dataLoaded, setDataLoaded] = useState(false);
+  // فتح لحظي إذا كانت بيانات الجراجات موجودة في الكاش بالفعل
+  const [dataLoaded, setDataLoaded] = useState(() => garages.length > 0);
+  const [initialSyncDone, setInitialSyncDone] = useState(false);
+
   const [adminAccess, setAdminAccess] = useState(() => {
     const isUrlAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin';
     if (isUrlAdmin) {
@@ -275,15 +313,47 @@ export default function App() {
     }
   }, []);
 
+  // حفظ آخر شاشة وقف عليها العميل + الجراج المختار تلقائياً في localStorage
+  useEffect(() => {
+    if (screen && VALID_SCREENS.includes(screen as any)) {
+      safeLocalStorage.setItem('appScreen', screen);
+      if (PERSISTENT_USER_SCREENS.includes(screen as any)) {
+        safeLocalStorage.setItem('lastUserScreen', screen);
+      }
+    }
+  }, [screen]);
+
+  useEffect(() => {
+    if (selectedGarageId) {
+      safeLocalStorage.setItem('selectedGarageId', selectedGarageId);
+    }
+  }, [selectedGarageId]);
+
   useEffect(() => {
     const init = async () => {
       const isUrlAdmin = window.location.pathname === '/admin' || window.location.hash === '#admin';
       const savedView = isUrlAdmin ? 'admin' : (safeLocalStorage.getItem('appView') || 'user');
-      const savedScreen = safeLocalStorage.getItem('appScreen');
+      const savedGarageId = safeLocalStorage.getItem('selectedGarageId');
+      const savedLastUserScreen = safeLocalStorage.getItem('lastUserScreen');
+      const savedAppScreen = safeLocalStorage.getItem('appScreen');
+
+      // استرجاع الجراج المختار فوراً قبل رسم شاشة التوجيه أو الجلسة
+      if (savedGarageId) {
+        setSelectedGarageId(savedGarageId);
+      }
 
       setView(savedView as any);
-      if (savedScreen && VALID_SCREENS.includes(savedScreen as any)) {
-        setScreen(savedScreen as any);
+
+      // استرجاع آخر شاشة وقف عليها العميل (سواء رئيسية أو توجيه أو جلسة) بدون المرور الإجباري بالرئيسية
+      const preferredScreen =
+        savedLastUserScreen && PERSISTENT_USER_SCREENS.includes(savedLastUserScreen as any)
+          ? savedLastUserScreen
+          : savedAppScreen && VALID_SCREENS.includes(savedAppScreen as any)
+            ? savedAppScreen
+            : null;
+
+      if (preferredScreen) {
+        setScreen(preferredScreen as any);
       }
 
       try {
@@ -292,6 +362,7 @@ export default function App() {
         console.error('Fetch error:', err);
       } finally {
         setDataLoaded(true);
+        setInitialSyncDone(true);
       }
 
       if (!isRealtimeInitialized) {
@@ -299,13 +370,40 @@ export default function App() {
         isRealtimeInitialized = true;
       }
     };
-
     init();
-  }, [setView, setScreen, fetchAll]);
+  }, [setView, setScreen, setSelectedGarageId, fetchAll]);
+
+  // مزامنة ذكية خفيفة عند عودة العميل للتطبيق بعد قفل الشاشة لفترة (> 25 ثانية) لتوفير طلبات السيرفر
+  useEffect(() => {
+    let lastHiddenAt = 0;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAt = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        if (lastHiddenAt > 0 && Date.now() - lastHiddenAt > 25000) {
+          fetchAll().catch(() => {});
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchAll]);
 
   const safeScreen = useMemo(() => {
     if (!VALID_SCREENS.includes(screen as any)) {
+      const savedLast = safeLocalStorage.getItem('lastUserScreen');
+      if (currentUser && savedLast && PERSISTENT_USER_SCREENS.includes(savedLast as any)) {
+        return savedLast as typeof screen;
+      }
       return currentUser ? 'list' : 'splash';
+    }
+    // إذا كان المستخدم مسجلاً بالفعل وكانت الشاشة splash، نفتح مباشرة على آخر شاشة وقف عليها العميل
+    if (currentUser && screen === 'splash') {
+      const savedLast = safeLocalStorage.getItem('lastUserScreen');
+      if (savedLast && PERSISTENT_USER_SCREENS.includes(savedLast as any)) {
+        return savedLast as typeof screen;
+      }
+      return 'list';
     }
     return screen;
   }, [screen, currentUser]);
@@ -316,16 +414,14 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {/* مراقب الجلسات يعمل في الخلفية دون تعطيل الواجهة */}
-      <SessionWatcher dataLoaded={dataLoaded} />
-
+      {/* مراقب الجلسات يعمل في الخلفية بعد اكتمال المزامنة الأولى دون تعطيل الواجهة */}
+      <SessionWatcher dataLoaded={initialSyncDone} />
       {showLanding && (
         <ParkLanding onEnter={() => {
           safeLocalStorage.setItem('parkn24_landing_last_date', new Date().toDateString());
           setShowLanding(false);
         }} />
       )}
-
       <AuthGate>
         <div className="max-w-md mx-auto h-dvh bg-white text-slate-900 relative flex flex-col overflow-hidden">
           {adminAccess && (
@@ -359,7 +455,6 @@ export default function App() {
               ))}
             </div>
           )}
-
           <main className="flex-1 overflow-hidden bg-white">
             {view === 'admin' && adminAccess ? (
               <Suspense fallback={<Loader text="جاري فتح لوحة المشرف..." />}>
