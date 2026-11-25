@@ -3,16 +3,13 @@
 // 🛡️ Car Shield Engine — Ultra-Responsive Background Keep-Alive + Zero-Cost GPS
 // ═══════════════════════════════════════════════════════════
 import { supabase } from './supabase';
-
 export type AlertType = 'warning' | 'resolved' | 'status' | 'report' | 'qrScan';
-
 export interface FakeAlert {
   type: AlertType;
   title: string;
   body: string;
   icon: string;
 }
-
 export interface ShieldState {
   isActive: boolean;
   shieldCode: string | null;
@@ -23,37 +20,30 @@ export interface ShieldState {
   sessionId: string | null;
   shieldId?: string | null;
 }
-
 // ─── ثوابت النظام المالي والتشغيلي ───
 export const SHIELD_COST = 7;
 export const SHIELD_STORAGE_KEY = 'parkn24_shield';
 const FAKE_ALERT_STORAGE_KEY = 'parkn24_shield_fake_meta';
 const FAKE_ALERT_INTERVAL_MS = 30 * 60 * 1000; // 30 دقيقة بالمللي ثانية
-
 // ─── 🎯 ثوابت الجيوفنس الدقيق والحماية من الخمول ───
 export const GEOFENCE_RADIUS_METERS = 50;
 export const GEOFENCE_RADIUS = 50; // للتوافق العكسي مع الشاشات
 export const ALERT_DISTANCE = 50; // للتوافق العكسي
 export const MIN_MOVEMENT_METERS = 30; // حد إرسال التحديث للسيرفر
 export const FALLBACK_INTERVAL_MS = 12_000; // نبض خلفي كل 12 ثانية بدون أي حمل سيرفر
-
 // ─── 🧠 ثوابت السرعة والانطلاق وفترة التثبيت ───
 export const SPEED_THRESHOLD_MPS = 3.0; // 3.0 م/ث = ~11 كم/س (سرعة حركة سيارة حقيقية)
 export const CAR_SPEED_THRESHOLD = 3.0;
 export const CAR_GRACE_MS = 1_000; // ثانية واحدة فقط للتأكيد لسرعة الاستجابة القصوى
 export const STABILIZATION_MS = 4_000; // 4 ثوانٍ تثبيت أولي عند تشغيل الـ GPS
 export const MAX_ALLOWED_ACCURACY_METERS = 45; // استبعاد الإشارات المشوشة لمنع الإنذارات الكاذبة
-
 // ─── ⏱️ ثوابت ترشيد استهلاك السيرفر (Throttle) ───
 const GPS_SERVER_THROTTLE_MS = 15_000; // حد أدنى 15 ثانية بين كل استعلام تحديث للسيرفر لتوفير الحمل
-
 // صوت سارينة احترافي نقي ومتوازن
 const SIREN_AUDIO_URL = 'https://assets.mixkit.co/active_storage/sfx/995/995-preview.mp3';
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-
 // VAPID Public Key لتفعيل الـ Web Push
 const VAPID_PUBLIC_KEY = 'BOuP_HFhSSjHMsjf4KZJYLaFTv3RdI20Ux3an5LriaTBUN0iGlW-38zYGvROp26k7jcqhC_XpUotxzLR1IjQTI4';
-
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -64,7 +54,20 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   }
   return outputArray;
 }
-
+function canBrowserVibrate(): boolean {
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+      return false;
+    }
+    const ua = (navigator as any).userActivation;
+    if (ua && typeof ua.hasBeenActive === 'boolean') {
+      return ua.hasBeenActive;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 // ─── 🛡️ بنك الإشعارات الأمني التكتيكي ───
 export const ALERT_POOL: FakeAlert[] = [
   { type: 'status', title: "🛡️ رادار Park'n 24", body: 'جاري مسح المحيط الأمني لسيارتك.. الوضع مستقر تماماً.', icon: '🛡️' },
@@ -98,7 +101,6 @@ export const ALERT_POOL: FakeAlert[] = [
   { type: 'status', title: '🛰️ تزامن الأقمار', body: 'تم عمل Sync ناجح مع القمر صناعية لتأمين موقعك الحالي.', icon: '🛰️' },
   { type: 'resolved', title: '✅ فحص أخير', body: 'كل الأنظمة تعمل بكفاءة. استمتع بيومك، نحن نتولى الحراسة!', icon: '✅' },
 ];
-
 // ─── Haversine لحساب المسافة بالأمتار ───
 export function haversine(
   lat1: number, lon1: number,
@@ -114,7 +116,6 @@ export function haversine(
       Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
-
 // ═══════════════════════════════════════════════════════════
 // 📍 التحقق من وجود العميل في نطاق الركنة (50 متر)
 // ═══════════════════════════════════════════════════════════
@@ -140,7 +141,6 @@ export async function checkUserInsideGarage(
     );
   });
 }
-
 // ═══════════════════════════════════════════════════════════
 // 📝 تسجيل الجلسة في قاعدة البيانات + الاشتراك في الـ Web Push
 // ═══════════════════════════════════════════════════════════
@@ -154,15 +154,7 @@ export async function registerShieldSession(params: {
   try {
     ensureFakeAlertMetaInitialized(params.sessionId);
 
-    const { data: existing } = await supabase
-      .from('shield_sessions')
-      .select('id')
-      .eq('session_id', params.sessionId)
-      .is('ended_at', null)
-      .maybeSingle();
-    if (existing) {
-      return existing.id;
-    }
+    // 1. جلب أو تفعيل اشتراك Web Push أولاً لضمان إرفاق المفاتيح دائماً على الموبايل
     let ep: string | null = null;
     let p256: string | null = null;
     let auth: string | null = null;
@@ -173,7 +165,7 @@ export async function registerShieldSession(params: {
       if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
+        if (!sub && 'Notification' in window && Notification.permission === 'granted') {
           try {
             sub = await reg.pushManager.subscribe({
               userVisibleOnly: true,
@@ -193,6 +185,65 @@ export async function registerShieldSession(params: {
     } catch (err) {
       console.warn('ℹ️ Push notification setup skipped:', err);
     }
+
+    // 2. التحقق مما إذا كانت الجلسة مسجلة مسبقاً بنفس الـ sessionId
+    const { data: existing } = await supabase
+      .from('shield_sessions')
+      .select('id, push_endpoint')
+      .eq('session_id', params.sessionId)
+      .is('ended_at', null)
+      .maybeSingle();
+
+    if (existing) {
+      if (ep && p256 && auth && existing.push_endpoint !== ep) {
+        await supabase
+          .from('shield_sessions')
+          .update({
+            push_endpoint: ep,
+            push_p256dh: p256,
+            push_auth: auth,
+            last_gps_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      }
+      return existing.id;
+    }
+
+    // 3. في حال الانتقال من شاشة التوجيه (nav-...) إلى شاشة الجلسة الفعلية، نُرقّي السجل الحالي بدون تصفير fake_tick أو alert_count
+    if (params.phone && !params.sessionId.startsWith('nav-')) {
+      const { data: navRow } = await supabase
+        .from('shield_sessions')
+        .select('id, session_id')
+        .eq('phone', params.phone)
+        .eq('garage_id', params.garageId)
+        .is('ended_at', null)
+        .like('session_id', 'nav-%')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (navRow) {
+        const updatePayload: Record<string, any> = {
+          session_id: params.sessionId,
+          parking_lat: params.parkingLat,
+          parking_lng: params.parkingLng,
+          last_gps_at: new Date().toISOString(),
+        };
+        if (ep && p256 && auth) {
+          updatePayload.push_endpoint = ep;
+          updatePayload.push_p256dh = p256;
+          updatePayload.push_auth = auth;
+        }
+        await supabase
+          .from('shield_sessions')
+          .update(updatePayload)
+          .eq('id', navRow.id);
+
+        return navRow.id;
+      }
+    }
+
+    // 4. إنشاء سجل درع جديد
     const { data, error } = await supabase
       .from('shield_sessions')
       .insert({
@@ -219,20 +270,17 @@ export async function registerShieldSession(params: {
     return null;
   }
 }
-
 // ═══════════════════════════════════════════════════════════
 // 🔔 محرك بنك الإشعارات الوهمية لتأمين السيارة كل 30 دقيقة (ALERT_POOL)
 // ═══════════════════════════════════════════════════════════
 let fakeAlertsTimerId: ReturnType<typeof setInterval> | null = null;
 let fakeAlertSubscriber: ((alert: FakeAlert) => void) | null = null;
-
 interface FakeAlertMeta {
   sessionId: string;
   startTime: number;
   lastTick: number;
   poolIndex: number;
 }
-
 function loadFakeAlertMeta(): FakeAlertMeta | null {
   try {
     const raw = localStorage.getItem(FAKE_ALERT_STORAGE_KEY);
@@ -241,7 +289,6 @@ function loadFakeAlertMeta(): FakeAlertMeta | null {
     return null;
   }
 }
-
 function saveFakeAlertMeta(meta: FakeAlertMeta): void {
   try {
     localStorage.setItem(FAKE_ALERT_STORAGE_KEY, JSON.stringify(meta));
@@ -249,12 +296,25 @@ function saveFakeAlertMeta(meta: FakeAlertMeta): void {
     // ignore
   }
 }
-
 function ensureFakeAlertMetaInitialized(sessionId?: string | null): FakeAlertMeta {
   const activeSessionId = sessionId || loadShieldState()?.sessionId || 'active_shield';
   const existing = loadFakeAlertMeta();
-  if (existing && existing.sessionId === activeSessionId && existing.startTime > 0) {
-    return existing;
+  if (existing && existing.startTime > 0) {
+    if (existing.sessionId === activeSessionId) {
+      return existing;
+    }
+    if (
+      (existing.sessionId.startsWith('nav-') || existing.sessionId === 'active_shield') &&
+      activeSessionId &&
+      !activeSessionId.startsWith('nav-')
+    ) {
+      const upgraded: FakeAlertMeta = {
+        ...existing,
+        sessionId: activeSessionId,
+      };
+      saveFakeAlertMeta(upgraded);
+      return upgraded;
+    }
   }
   const fresh: FakeAlertMeta = {
     sessionId: activeSessionId,
@@ -265,7 +325,6 @@ function ensureFakeAlertMetaInitialized(sessionId?: string | null): FakeAlertMet
   saveFakeAlertMeta(fresh);
   return fresh;
 }
-
 function dispatchFakeAlertNotification(alert: FakeAlert, tick: number): void {
   try {
     if (fakeAlertSubscriber) {
@@ -274,9 +333,9 @@ function dispatchFakeAlertNotification(alert: FakeAlert, tick: number): void {
   } catch {
     // ignore callback error
   }
-
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const tag = `parkn24-shield-status-${tick}`;
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready
           .then((reg) => {
@@ -285,68 +344,67 @@ function dispatchFakeAlertNotification(alert: FakeAlert, tick: number): void {
               icon: '/favicon.ico',
               badge: '/favicon.ico',
               vibrate: [200, 100, 200],
-              tag: `parkn24-shield-status-${tick}`,
+              tag,
               renotify: true,
-            } as any);
+              data: { url: '/', type: 'shield-fake' },
+            } as any).catch(() => {
+              if (reg.active) {
+                reg.active.postMessage({
+                  type: 'SHOW_NOTIFICATION',
+                  title: alert.title,
+                  body: alert.body,
+                  tag,
+                });
+              }
+            });
           })
           .catch(() => {
             try {
-              new Notification(alert.title, { body: alert.body, icon: '/favicon.ico' });
+              new Notification(alert.title, { body: alert.body, icon: '/favicon.ico', tag });
             } catch {}
           });
       } else {
-        new Notification(alert.title, { body: alert.body, icon: '/favicon.ico' });
+        new Notification(alert.title, { body: alert.body, icon: '/favicon.ico', tag });
       }
     }
   } catch (e) {
     console.warn('Fake alert notification error:', e);
   }
 }
-
 export function checkAndFirePeriodicFakeAlert(sessionId?: string | null): void {
   try {
     const shieldState = loadShieldState();
     const resolvedSessionId = sessionId || shieldState?.sessionId;
     if (!resolvedSessionId && !shieldState?.isActive && gpsWatchId === null) return;
-
     const meta = ensureFakeAlertMetaInitialized(resolvedSessionId);
     const elapsedMs = Date.now() - meta.startTime;
     if (elapsedMs < FAKE_ALERT_INTERVAL_MS) return;
-
     const currentTick = Math.floor(elapsedMs / FAKE_ALERT_INTERVAL_MS);
     if (currentTick <= 0 || currentTick <= meta.lastTick) return;
-
     const nextIndex = (meta.poolIndex + 1) % ALERT_POOL.length;
     const chosenAlert = ALERT_POOL[nextIndex] || ALERT_POOL[0];
-
     meta.lastTick = currentTick;
     meta.poolIndex = nextIndex;
     saveFakeAlertMeta(meta);
-
     dispatchFakeAlertNotification(chosenAlert, currentTick);
   } catch {
     // ignore
   }
 }
-
 export function startFakeAlerts(onAlert?: (alert: FakeAlert) => void): () => void {
   if (onAlert) {
     fakeAlertSubscriber = onAlert;
   }
   ensureFakeAlertMetaInitialized();
-
   if (fakeAlertsTimerId) {
     clearInterval(fakeAlertsTimerId);
   }
-
   // فحص دوري كل 30 ثانية للتأكد من إطلاق إشعار الـ 30 دقيقة بدقة حتى لو نامت التاب مؤقتاً
   fakeAlertsTimerId = setInterval(() => {
     checkAndFirePeriodicFakeAlert();
   }, 30_000);
-
   return () => stopFakeAlerts();
 }
-
 export function stopFakeAlerts(): void {
   if (fakeAlertsTimerId) {
     clearInterval(fakeAlertsTimerId);
@@ -354,7 +412,6 @@ export function stopFakeAlerts(): void {
   }
   fakeAlertSubscriber = null;
 }
-
 // ═══════════════════════════════════════════════════════════
 // 🔊 محرك تجهيز الصوت المسبق فائق الاستجابة (Pre-warmed Audio Loop Engine)
 // ═══════════════════════════════════════════════════════════
@@ -368,7 +425,6 @@ let alarmAudioCtx: AudioContext | null = null;
 let alarmOscillators: OscillatorNode[] = [];
 let alarmVibrationInterval: ReturnType<typeof setInterval> | null = null;
 let isAlarmActive = false;
-
 export function initAudioContext(): void {
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
@@ -383,7 +439,6 @@ export function initAudioContext(): void {
     console.warn('AudioContext init failed:', e);
   }
 }
-
 async function requestWakeLock(): Promise<void> {
   try {
     if ('wakeLock' in navigator && !wakeLockSentinel) {
@@ -396,31 +451,36 @@ async function requestWakeLock(): Promise<void> {
     // WakeLock غير مدعوم أو تم رفضه
   }
 }
-
 /**
- * تجهيز مسار الصوت المسبق (Pre-warmed Audio) فور تفعيل الدرع
+ * تجهيز مسار الصوت المسبق (Pre-warmed Audio) فور تفعيل الدرع بصمت تام 100%
  */
 export function armBackgroundAudio(): void {
   try {
     initAudioContext();
+
+    // 1. تحميل ملف السارينة في الذاكرة مسبقاً بدون تشغيله (يعمل فقط عند حدوث اختراق)
     if (!prewarmedSirenAudio) {
       prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
       prewarmedSirenAudio.loop = true;
       prewarmedSirenAudio.preload = 'auto';
-      prewarmedSirenAudio.volume = 0.001; // صوت صامت يحافظ على مسار الميديا نشطاً
+      prewarmedSirenAudio.volume = 0.75;
       (prewarmedSirenAudio as any).playsInline = true;
+      try {
+        prewarmedSirenAudio.load();
+      } catch {}
     }
-    prewarmedSirenAudio.play().then(() => {
+
+    // 2. تشغيل ملف الموجة الصامتة (0 dB بدون أي صوت نهائياً) للحفاظ على مسار الصوت نشطاً في الخلفية
+    if (!silentAudioEl) {
+      silentAudioEl = new Audio(SILENT_WAV_BASE64);
+      silentAudioEl.loop = true;
+      silentAudioEl.volume = 0.01;
+      (silentAudioEl as any).playsInline = true;
+    }
+    silentAudioEl.play().then(() => {
       isAudioKeepAliveActive = true;
-    }).catch(() => {
-      if (!silentAudioEl) {
-        silentAudioEl = new Audio(SILENT_WAV_BASE64);
-        silentAudioEl.loop = true;
-        silentAudioEl.volume = 0.01;
-        (silentAudioEl as any).playsInline = true;
-      }
-      silentAudioEl.play().catch(() => {});
-    });
+    }).catch(() => {});
+
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
@@ -432,11 +492,17 @@ export function armBackgroundAudio(): void {
         album: 'نظام المراقبة المستمر',
       });
       navigator.mediaSession.setActionHandler('play', () => {
-        if (prewarmedSirenAudio) prewarmedSirenAudio.play().catch(() => {});
+        if (isAlarmActive && prewarmedSirenAudio) {
+          prewarmedSirenAudio.play().catch(() => {});
+        } else if (silentAudioEl) {
+          silentAudioEl.play().catch(() => {});
+        }
       });
       navigator.mediaSession.setActionHandler('pause', () => {
-        if (prewarmedSirenAudio && !isAlarmActive) {
+        if (isAlarmActive && prewarmedSirenAudio) {
           prewarmedSirenAudio.play().catch(() => {});
+        } else if (silentAudioEl) {
+          silentAudioEl.play().catch(() => {});
         }
       });
     }
@@ -445,19 +511,24 @@ export function armBackgroundAudio(): void {
     console.warn('⚠️ armBackgroundAudio error:', e);
   }
 }
-
 // دالة للتوافق العكسي
 export function unlockAndKeepAliveAudio(): void {
   armBackgroundAudio();
 }
-
 // ═══════════════════════════════════════════════════════════
 // 🚨🔊 سارينة واضحة ومتوازنة + اهتزاز نبضي لطيف (بدون إزعاج حاد)
 // ═══════════════════════════════════════════════════════════
 export function triggerBreachAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
-  // 1. تشغيل صوت السارينة الواضح والنقي بمستوى متوازن (بدون تشويش أو فرقعة سماعات)
+  // 1. تشغيل صوت السارينة الواضح والنقي بمستوى متوازن عند الاختراق فقط
+  if (!prewarmedSirenAudio) {
+    try {
+      prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
+      prewarmedSirenAudio.loop = true;
+      (prewarmedSirenAudio as any).playsInline = true;
+    } catch {}
+  }
   if (prewarmedSirenAudio) {
     try {
       prewarmedSirenAudio.volume = 0.75; // مستوى مريح وواضح
@@ -495,13 +566,17 @@ export function triggerBreachAlarm(): void {
     }
   } catch { /* ignore */ }
   // 3. اهتزاز نبضي ذكي ومحسوس (بدون رج عنيف مستمر يحرق الموتور)
-  if (navigator.vibrate) {
+  if (canBrowserVibrate()) {
     // نبضة: اهتزاز 300 مللي، راحة 200، اهتزاز 300، راحة 600
     const pleasantPattern = [300, 200, 300, 600];
-    navigator.vibrate(pleasantPattern);
+    try {
+      navigator.vibrate(pleasantPattern);
+    } catch {}
     alarmVibrationInterval = setInterval(() => {
-      if (isAlarmActive && navigator.vibrate) {
-        navigator.vibrate(pleasantPattern);
+      if (isAlarmActive && canBrowserVibrate()) {
+        try {
+          navigator.vibrate(pleasantPattern);
+        } catch {}
       }
     }, 1800);
   }
@@ -515,18 +590,16 @@ export function triggerBreachAlarm(): void {
     });
   }
 }
-
 // دالة للتوافق العكسي
 export function triggerIntenseAlarm(): void {
   triggerBreachAlarm();
 }
-
 export function stopIntenseAlarm(): void {
   isAlarmActive = false;
-  // إعادة السارينة للوضع الصامت الخلفي
+  // إيقاف السارينة تماماً حتى لا يصدر أي صوت في الخلفية
   if (prewarmedSirenAudio) {
     try {
-      prewarmedSirenAudio.volume = 0.001;
+      prewarmedSirenAudio.pause();
       prewarmedSirenAudio.currentTime = 0;
     } catch { /* ignore */ }
   }
@@ -541,7 +614,11 @@ export function stopIntenseAlarm(): void {
     clearInterval(alarmVibrationInterval);
     alarmVibrationInterval = null;
   }
-  if (navigator.vibrate) navigator.vibrate(0);
+  if (canBrowserVibrate()) {
+    try {
+      navigator.vibrate(0);
+    } catch {}
+  }
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: "🛡️ رادار الحماية نشط | Park'n 24",
@@ -550,11 +627,9 @@ export function stopIntenseAlarm(): void {
     });
   }
 }
-
 export function isIntenseAlarmActive(): boolean {
   return isAlarmActive;
 }
-
 // ═══════════════════════════════════════════════════════════
 // 📍 GPS Geofence فائق الحساسية مع فلترة شطحات الإشارة
 // ═══════════════════════════════════════════════════════════
@@ -569,7 +644,6 @@ let prevPos: { lat: number; lng: number; t: number } | null = null;
 let posHistory: Array<{ lat: number; lng: number; t: number; distFromGarage: number }> = [];
 let watchStartTime = 0;
 let visibilityHandler: (() => void) | null = null;
-
 export function startShieldGPS(params: {
   sessionId: string;
   shieldId?: string;
@@ -582,7 +656,6 @@ export function startShieldGPS(params: {
   armBackgroundAudio();
   ensureFakeAlertMetaInitialized(params.sessionId);
   startFakeAlerts();
-
   if (!navigator.geolocation) {
     params.onGPSError?.();
     return () => {};
@@ -596,7 +669,6 @@ export function startShieldGPS(params: {
   posHistory = [];
   watchStartTime = Date.now();
   let consecutiveErrors = 0;
-
   const handlePosition = (
     lat: number,
     lng: number,
@@ -605,11 +677,9 @@ export function startShieldGPS(params: {
   ) => {
     consecutiveErrors = 0;
     checkAndFirePeriodicFakeAlert(params.sessionId);
-
     const now = Date.now();
     const elapsed = now - watchStartTime;
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
-
     if (elapsed < STABILIZATION_MS) {
       prevPos = { lat, lng, t: now };
       posHistory = [{ lat, lng, t: now, distFromGarage }];
@@ -618,9 +688,7 @@ export function startShieldGPS(params: {
     if (accuracy && accuracy > MAX_ALLOWED_ACCURACY_METERS) {
       return;
     }
-
     let speed = (rawSpeed !== null && rawSpeed > 0) ? rawSpeed : 0;
-
     // 1. حساب السرعة المباشر بين نقطتين
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
@@ -633,7 +701,6 @@ export function startShieldGPS(params: {
       }
     }
     prevPos = { lat, lng, t: now };
-
     // 2. نافذة حساب سرعة دقيقة (Sliding Window 2s..15s) لالتقاط سرعة السيارة حتى لو كان watchPosition يحدث كل ثانية والـ rawSpeed = null
     posHistory.push({ lat, lng, t: now, distFromGarage });
     if (posHistory.length > 12) {
@@ -653,11 +720,9 @@ export function startShieldGPS(params: {
         }
       }
     }
-
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
     const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
     const isConfirmedSpeed = speed >= SPEED_THRESHOLD_MPS;
-
     // 🚨 الإنذار ينطلق فقط إذا ابتعد العميل عن نطاق الـ 50 متر وتحرك بسرعة السيارة (isConfirmedSpeed)
     // أما إذا مشى على قدميه لمشواره (سرعة المشي < 3 م/ث) فلا ينطلق الإنذار مهما ابتعد
     if (isOverDistance && isConfirmedSpeed) {
@@ -677,9 +742,11 @@ export function startShieldGPS(params: {
                   reg.showNotification(title, {
                     body,
                     icon: '/favicon.ico',
+                    badge: '/favicon.ico',
                     vibrate: [300, 200, 300, 600],
                     tag: 'shield-breach',
-                  });
+                    data: { url: '/', type: 'shield-breach' },
+                  } as any);
                 });
               } else {
                 new Notification(title, { body, icon: '/favicon.ico' });
@@ -706,14 +773,12 @@ export function startShieldGPS(params: {
       }
     }
   };
-
   const handleGPSError = (err: GeolocationPositionError) => {
     consecutiveErrors++;
     if (consecutiveErrors >= 4) {
       params.onGPSError?.();
     }
   };
-
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => handlePosition(
       pos.coords.latitude,
@@ -724,12 +789,14 @@ export function startShieldGPS(params: {
     handleGPSError,
     { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
   );
-
   fallbackIntervalId = setInterval(() => {
     checkAndFirePeriodicFakeAlert(params.sessionId);
-
-    if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
-      prewarmedSirenAudio.play().catch(() => {});
+    if (isAlarmActive) {
+      if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
+        prewarmedSirenAudio.play().catch(() => {});
+      }
+    } else if (silentAudioEl && silentAudioEl.paused) {
+      silentAudioEl.play().catch(() => {});
     }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
@@ -745,12 +812,14 @@ export function startShieldGPS(params: {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 },
     );
   }, FALLBACK_INTERVAL_MS);
-
   visibilityHandler = () => {
     checkAndFirePeriodicFakeAlert(params.sessionId);
-
-    if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
-      prewarmedSirenAudio.play().catch(() => {});
+    if (isAlarmActive) {
+      if (prewarmedSirenAudio && prewarmedSirenAudio.paused) {
+        prewarmedSirenAudio.play().catch(() => {});
+      }
+    } else if (silentAudioEl && silentAudioEl.paused) {
+      silentAudioEl.play().catch(() => {});
     }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
@@ -772,7 +841,6 @@ export function startShieldGPS(params: {
   document.addEventListener('visibilitychange', visibilityHandler);
   return () => stopShieldGPS();
 }
-
 export function stopShieldGPS(): void {
   if (gpsWatchId !== null && navigator.geolocation) {
     navigator.geolocation.clearWatch(gpsWatchId);
@@ -792,11 +860,9 @@ export function stopShieldGPS(): void {
   prevPos = null;
   posHistory = [];
 }
-
 // ─── 📡 إرسال الـ GPS للسيرفر مع حماية التكرار و Throttle للـ Disk IO ───
 let lastGpsSendTimestamp = 0;
 let isGpsSendingInProgress = false;
-
 async function sendGPSToServer(
   sessionId: string,
   shieldId: string | undefined,
@@ -842,7 +908,6 @@ async function sendGPSToServer(
     isGpsSendingInProgress = false;
   }
 }
-
 // ═══════════════════════════════════════════════════════════
 // 🧹 تدمير الدرع وإيقاف كل العمليات
 // ═══════════════════════════════════════════════════════════
@@ -880,7 +945,6 @@ export function disarmBackgroundAudio(): void {
     navigator.mediaSession.playbackState = 'none';
   }
 }
-
 export function destroyShield(): void {
   stopShieldGPS();
   stopFakeAlerts();
@@ -890,17 +954,21 @@ export function destroyShield(): void {
     localStorage.removeItem(FAKE_ALERT_STORAGE_KEY);
   } catch { /* ignore */ }
 }
-
 // ═══════════════════════════════════════════════════════════
 // 💾 حفظ وتحميل حالة الدرع في LocalStorage
 // ═══════════════════════════════════════════════════════════
 export function saveShieldState(state: ShieldState): void {
   try { localStorage.setItem(SHIELD_STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 }
-
 export function loadShieldState(): ShieldState | null {
   try {
     const raw = localStorage.getItem(SHIELD_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as ShieldState) : null;
   } catch { return null; }
+}
+export function clearShieldState(): void {
+  try {
+    localStorage.removeItem(SHIELD_STORAGE_KEY);
+    localStorage.removeItem(FAKE_ALERT_STORAGE_KEY);
+  } catch { /* ignore */ }
 }
