@@ -29,8 +29,10 @@ import {
   stopIntenseAlarm,
   destroyShield,
   registerShieldSession,
+  loadShieldState,
+  saveShieldState,
+  SHIELD_COST,
 } from '../lib/shield';
-
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -45,9 +47,7 @@ const BRAND = {
   slateMuted: '#94a3b8',
   border: 'rgba(255, 255, 255, 0.12)',
 };
-
 const AUTO_END_SECONDS = 6 * 60 * 60; // 6 ساعات كحد أقصى
-
 const safeParseTime = (value: any): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -59,7 +59,6 @@ const safeParseTime = (value: any): number => {
   }
   return 0;
 };
-
 const formatTime = (seconds: number): string => {
   if (!seconds || seconds < 0) return '00:00:00';
   const h = Math.floor(seconds / 3600);
@@ -67,7 +66,6 @@ const formatTime = (seconds: number): string => {
   const s = seconds % 60;
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
-
 /* ═══════════════════════════════════════════════════════════
    🛰️ TacticalRadarScope (رادار الحماية التكتيكي - إحداثيات حية دقيقة)
    ═══════════════════════════════════════════════════════════ */
@@ -184,7 +182,6 @@ const TacticalRadarScope = memo(function TacticalRadarScope({
     </div>
   );
 });
-
 /* ═══════════════════════════════════════════════════════════
    ⚡ LiveSessionTimer
    ═══════════════════════════════════════════════════════════ */
@@ -199,7 +196,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
   const autoEndedRef = useRef(false);
   const onAutoEndRef = useRef(onAutoEnd);
   onAutoEndRef.current = onAutoEnd;
-
   useEffect(() => {
     if (activeStartMs <= 0) {
       setElapsed(0);
@@ -226,7 +222,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
         onAutoEndRef.current();
       }
     }, 1000);
-
     // تحديث فوري عند فتح قفل شاشة الهاتف
     const handleSync = () => {
       const refreshed = calcElapsed();
@@ -245,11 +240,9 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
       window.removeEventListener('focus', handleSync);
     };
   }, [activeStartMs]);
-
   const remainingAutoEnd = Math.max(0, AUTO_END_SECONDS - elapsed);
   const autoEndMinutes = Math.floor((remainingAutoEnd % 3600) / 60);
   const showAutoEndWarning = remainingAutoEnd > 0 && remainingAutoEnd <= 30 * 60;
-
   return (
     <>
       <div
@@ -288,7 +281,6 @@ const LiveSessionTimer = memo(function LiveSessionTimer({
     </>
   );
 });
-
 /* ═══════════════════════════════════════════════════════════
    📺 SessionScreen
    ═══════════════════════════════════════════════════════════ */
@@ -304,7 +296,6 @@ export default function SessionScreen() {
     acknowledgeSession,
     endSession,
   } = useStore();
-
   const userPlate = normalizePlate(currentUser?.carPlate);
   const userPhone = currentUser?.phone ? normalizePhone(currentUser.phone) : '';
   const isMountedRef = useRef(true);
@@ -314,14 +305,12 @@ export default function SessionScreen() {
   const [endedSessionId, setEndedSessionId] = useState<string | null>(null);
   const [showBreach, setShowBreach] = useState(false);
   const [initialCheckDone, setInitialCheckDone] = useState(false);
-
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
   }, []);
-
   // ⚡ جلب محمي لتخفيف الضغط على السيرفر (بحد أقصى مرة كل 15 ثانية عند الحاجة)
   const throttledFetchAll = useCallback(async () => {
     const now = Date.now();
@@ -340,7 +329,6 @@ export default function SessionScreen() {
       }
     }
   }, [fetchAll]);
-
   // استخراج الجلسة النشطة بدقة (يدعم customerPhone و userPhone و carPlate)
   const activeSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
@@ -363,7 +351,6 @@ export default function SessionScreen() {
     }
     return latest;
   }, [sessions, userPlate, userPhone, acknowledgedSessionIds, endedSessionId]);
-
   const lastCompletedSession = useMemo(() => {
     let latest: (typeof sessions)[number] | undefined;
     let maxEnd = -1;
@@ -383,18 +370,15 @@ export default function SessionScreen() {
     }
     return latest;
   }, [sessions, userPlate, userPhone]);
-
   const garage = useMemo(() => {
     const targetGarageId = activeSession?.garageId ?? lastCompletedSession?.garageId;
     return garages?.find((g) => g.id === targetGarageId);
   }, [garages, activeSession?.garageId, lastCompletedSession?.garageId]);
-
   const activeStartMs = useMemo(() => {
     if (!activeSession) return 0;
     const ms = safeParseTime(activeSession.startTime);
     return ms > 0 ? ms : getServerNow();
   }, [activeSession]);
-
   useEffect(() => {
     throttledFetchAll();
     const timer = setTimeout(() => {
@@ -402,7 +386,6 @@ export default function SessionScreen() {
     }, 1800);
     return () => clearTimeout(timer);
   }, [throttledFetchAll]);
-
   // مزامنة خفيفة عند فتح قفل الشاشة بدون إنشاء قنوات Realtime مكررة (لأن store.ts يحدث الجلسات لحظياً في الذاكرة)
   useEffect(() => {
     const handleVisibility = () => {
@@ -415,23 +398,79 @@ export default function SessionScreen() {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [throttledFetchAll]);
+  // ═══════════════════════════════════════════════════════════
+  // 📍 استخراج إحداثيات الجراج الحقيقية وحالة تفعيل الدرع
+  // ═══════════════════════════════════════════════════════════
+  const isShieldPurchased = useMemo(() => {
+    if ((activeSession?.shieldCost ?? 0) > 0) return true;
+    const saved = loadShieldState();
+    if (saved?.isActive && activeSession?.garageId && saved.garageId === activeSession.garageId) {
+      return true;
+    }
+    return false;
+  }, [activeSession?.shieldCost, activeSession?.garageId]);
 
-  // ═══════════════════════════════════════════════════════════
-  // 📍 استخراج إحداثيات الجراج الحقيقية
-  // ═══════════════════════════════════════════════════════════
-  const isShieldPurchased = (activeSession?.shieldCost ?? 0) > 0;
   const shieldSessionId = activeSession?.id;
-  const garageId = garage?.id;
+  const garageId = activeSession?.garageId || garage?.id;
+  const sessionPhone = useMemo(() => {
+    const raw = (activeSession as any)?.customerPhone || (activeSession as any)?.userPhone || userPhone || '';
+    return raw ? normalizePhone(raw) : '';
+  }, [activeSession, userPhone]);
 
   const accurateLat = useMemo(() => {
-    const lat = (activeSession as any)?.parking_lat ?? (activeSession as any)?.parkingLat ?? (garage as any)?.latitude ?? garage?.lat;
+    const saved = loadShieldState();
+    const lat =
+      (activeSession as any)?.parking_lat ??
+      (activeSession as any)?.parkingLat ??
+      (saved?.isActive && saved?.garageId === activeSession?.garageId ? saved.parkingLat : undefined) ??
+      (garage as any)?.latitude ??
+      garage?.lat;
     return lat ? Number(lat) : 0;
   }, [activeSession, garage]);
 
   const accurateLng = useMemo(() => {
-    const lng = (activeSession as any)?.parking_lng ?? (activeSession as any)?.parkingLng ?? (garage as any)?.longitude ?? garage?.lng;
+    const saved = loadShieldState();
+    const lng =
+      (activeSession as any)?.parking_lng ??
+      (activeSession as any)?.parkingLng ??
+      (saved?.isActive && saved?.garageId === activeSession?.garageId ? saved.parkingLng : undefined) ??
+      (garage as any)?.longitude ??
+      garage?.lng;
     return lng ? Number(lng) : 0;
   }, [activeSession, garage]);
+
+  // إذا كان الدرع مفعلاً من شاشة التوجيه قبل بدء الجلسة، نربطه بمعرف الجلسة الحقيقي ونحدث shield_cost
+  useEffect(() => {
+    if (!shieldSessionId || !garageId || !isShieldPurchased) return;
+    const saved = loadShieldState();
+    if (saved?.isActive && saved.garageId === garageId && saved.sessionId !== shieldSessionId) {
+      saveShieldState({
+        ...saved,
+        sessionId: shieldSessionId,
+        phone: sessionPhone || saved.phone,
+        parkingLat: accurateLat || saved.parkingLat,
+        parkingLng: accurateLng || saved.parkingLng,
+      });
+    } else if (!saved?.isActive && accurateLat && accurateLng) {
+      saveShieldState({
+        isActive: true,
+        shieldCode: 'SH-' + shieldSessionId.slice(0, 6).toUpperCase(),
+        phone: sessionPhone,
+        garageId,
+        parkingLat: accurateLat,
+        parkingLng: accurateLng,
+        sessionId: shieldSessionId,
+        anchorLocked: false,
+      });
+    }
+    if ((activeSession?.shieldCost ?? 0) === 0) {
+      supabase
+        .from('sessions')
+        .update({ shield_cost: SHIELD_COST })
+        .eq('id', shieldSessionId)
+        .then(() => {}, () => {});
+    }
+  }, [shieldSessionId, garageId, isShieldPurchased, sessionPhone, accurateLat, accurateLng, activeSession?.shieldCost]);
 
   // 🔊 تجهيز مسار الصوت التلقائي فور لمس الشاشة
   useEffect(() => {
@@ -449,25 +488,22 @@ export default function SessionScreen() {
       window.removeEventListener('touchstart', primeGesture);
     };
   }, [isShieldPurchased]);
-
   // 🛡️ تشغيل رادار الـ GPS + بنك الإشعارات التكتيكي (كل 30 دقيقة للعميل فقط)
+  // ملاحظة هامة: الاعتماد على القيم الأساسية فقط (بدون الكائن activeSession) لمنع إعادة تصفير مؤقت الإشعارات عند كل تحديث
   useEffect(() => {
     if (!shieldSessionId || !garageId || !isShieldPurchased) return;
     if (!accurateLat || !accurateLng) return;
-
     armBackgroundAudio();
     let cancelled = false;
-
     const cleanupFakeAlerts = startFakeAlerts((alert) => {
       toast(alert.body, {
         icon: '🛡️',
         duration: 5000,
       });
     });
-
     registerShieldSession({
       sessionId: shieldSessionId,
-      phone: (activeSession as any)?.customerPhone || (activeSession as any)?.userPhone || userPhone || '',
+      phone: sessionPhone,
       garageId: garageId,
       parkingLat: accurateLat,
       parkingLng: accurateLng,
@@ -484,17 +520,13 @@ export default function SessionScreen() {
         },
       });
     });
-
     return () => {
       cancelled = true;
-      cleanupFakeAlerts();
+      if (typeof cleanupFakeAlerts === 'function') cleanupFakeAlerts();
       stopFakeAlerts();
       stopShieldGPS();
-      destroyShield();
-      setShowBreach(false);
     };
-  }, [shieldSessionId, garageId, isShieldPurchased, accurateLat, accurateLng, userPhone, activeSession]);
-
+  }, [shieldSessionId, garageId, isShieldPurchased, accurateLat, accurateLng, sessionPhone]);
   // 🏁 إنهاء الجلسة الفوري مع حساب الإيرادات الدقيق والتخلص من ثغرة تمرير الثواني مكان السعر
   const handleEndSession = useCallback(async () => {
     if (ending || !activeSession) return;
@@ -549,7 +581,6 @@ export default function SessionScreen() {
             .update({ ended_at: nowIso, push_endpoint: null, push_p256dh: null, push_auth: null })
             .eq('phone', userPhone)
             .is('ended_at', null)
-            .is('session_id', null)
         );
       }
       await Promise.all(shieldUpdates);
@@ -565,7 +596,6 @@ export default function SessionScreen() {
       if (isMountedRef.current) setEnding(false);
     }
   }, [ending, activeSession, activeStartMs, garage, endSession, acknowledgeSession, setSelectedGarageId, setScreen, userPhone]);
-
   // 🚨 معالج إيقاف الإنذار عند الاختراق
   const handleBreachAction = useCallback(async (isDriver: boolean) => {
     stopIntenseAlarm();
@@ -579,7 +609,6 @@ export default function SessionScreen() {
     }
     await handleEndSession();
   }, [handleEndSession]);
-
   // ⏰ الإنهاء التلقائي بعد 6 ساعات مع احتساب الإيراد الفعلي لـ 6 ساعات
   const handleAutoEnd = useCallback(async () => {
     if (autoEndedRef.current || !activeSession) return;
@@ -624,14 +653,12 @@ export default function SessionScreen() {
       setEndedSessionId(null);
     }
   }, [activeSession, garage, endSession, acknowledgeSession, setSelectedGarageId, setScreen]);
-
   // 🗺️ فتح خرائط جوجل لموقع الجراج الحقيقي
   const handleOpenGoogleMaps = () => {
     if (!garage && !accurateLat) return;
     const url = buildGoogleMapsUrl(accurateLat, accurateLng, garage?.name || '', garage?.location || '');
     window.open(url, '_blank', 'noopener,noreferrer');
   };
-
   // تحويل للقائمة فقط بعد التأكد الفعلي من عدم وجود جلسة نشطة (لمنع طرد العميل عند قفل وفتح التطبيق)
   useEffect(() => {
     if (!initialCheckDone) return;
@@ -640,9 +667,8 @@ export default function SessionScreen() {
       setScreen('list');
     }
   }, [initialCheckDone, activeSession, ending, setSelectedGarageId, setScreen]);
-
   if (activeSession) {
-    const isShieldActive = (activeSession.shieldCost ?? 0) > 0;
+    const isShieldActive = isShieldPurchased;
     const currentPlate = activeSession.carPlate || currentUser?.carPlate || '---';
     return (
       <motion.div
@@ -696,7 +722,6 @@ export default function SessionScreen() {
               </span>
             </div>
           )}
-
           {/* 🛰️ رادار الحماية التكتيكي الحي بإحداثيات حقيقية */}
           <TacticalRadarScope
             carPlate={currentPlate}
@@ -704,13 +729,11 @@ export default function SessionScreen() {
             displayLat={accurateLat}
             displayLng={accurateLng}
           />
-
           {/* ⚡ شريط عداد الوقت المدمج */}
           <LiveSessionTimer
             activeStartMs={activeStartMs}
             onAutoEnd={handleAutoEnd}
           />
-
           {/* 💡 بطاقة التوجيه والتحذير الأمني النفسي الإلزامية */}
           {isShieldActive ? (
             <div
@@ -750,7 +773,6 @@ export default function SessionScreen() {
             </div>
           )}
         </div>
-
         {/* 📋 القسم السفلي */}
         <div
           className="px-4 pt-2.5 pb-4 border-t shrink-0 flex flex-col gap-2"
@@ -811,7 +833,6 @@ export default function SessionScreen() {
               </div>
             )}
           </div>
-
           {/* زر الملاحة لخرائط جوجل لموقع الجراج الحقيقي */}
           {garage && (
             <button
@@ -827,7 +848,6 @@ export default function SessionScreen() {
               <span>الذهاب لموقع سيارتي عبر خرائط جوجل 📍</span>
             </button>
           )}
-
           {/* زر إنهاء الجلسة والخروج */}
           <button
             type="button"
@@ -846,7 +866,6 @@ export default function SessionScreen() {
             </span>
           </button>
         </div>
-
         {/* 🚨 شاشة اختراق الدرع وسارينة الطوارئ */}
         {showBreach && (
           <div
@@ -908,6 +927,5 @@ export default function SessionScreen() {
       </motion.div>
     );
   }
-
   return null;
 }
