@@ -892,7 +892,7 @@ export default function ShieldOverlay({
                 }}
               >
                 <AlertTriangle className="w-4 h-4" />
-                🚔 مش أنا — سرقة!
+                 مش أنا — !
               </button>
             </div>
           </div>

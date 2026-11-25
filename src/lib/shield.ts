@@ -428,7 +428,7 @@ export function armBackgroundAudio(): void {
       navigator.mediaSession.playbackState = 'playing';
       navigator.mediaSession.metadata = new MediaMetadata({
         title: "🛡️ رادار الحماية نشط | Park'n 24",
-        artist: 'درع الحماية ضد السرقة والونش',
+        artist: 'درع الحماية شغال',
         album: 'نظام المراقبة المستمر',
       });
       navigator.mediaSession.setActionHandler('play', () => {
@@ -545,7 +545,7 @@ export function stopIntenseAlarm(): void {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: "🛡️ رادار الحماية نشط | Park'n 24",
-      artist: 'درع الحماية ضد السرقة والونش',
+      artist: 'درع الحماية شغال',
       album: 'نظام المراقبة المستمر',
     });
   }

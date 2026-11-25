@@ -1369,7 +1369,7 @@ export default function NavigationScreen() {
                   boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
                 }}
               >
-                🚔 مش أنا — سرقة!
+                🚔 مش أنا — !
               </button>
             </div>
           </div>
