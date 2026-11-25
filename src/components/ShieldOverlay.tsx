@@ -1,4 +1,3 @@
-
 // src/components/ShieldOverlay.tsx
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -14,6 +13,8 @@ import {
 } from 'lucide-react';
 import {
   startShieldGPS,
+  startFakeAlerts,
+  stopFakeAlerts,
   checkUserInsideGarage,
   destroyShield,
   saveShieldState,
@@ -33,9 +34,7 @@ import {
 } from '../utils/notifications';
 import { subscribeToPush, registerShieldSession } from '../lib/pushManager';
 import { supabase } from '../lib/supabase';
-
 type Phase = 'ask' | 'register' | 'active' | 'breach' | 'dismissed';
-
 interface Props {
   sessionId: string;
   userId: string;
@@ -48,7 +47,6 @@ interface Props {
   autoResume?: boolean;
   onSessionEnd?: () => void;
 }
-
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0f3d85',
@@ -60,7 +58,6 @@ const BRAND = {
   slateMuted: '#94a3b8',
   border: 'rgba(255, 255, 255, 0.12)',
 };
-
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -71,7 +68,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   }
   return outputArray;
 }
-
 const terminateShieldOnServer = async (sessionId: string, identifier: string) => {
   const nowIso = new Date().toISOString();
   await Promise.all([
@@ -91,7 +87,6 @@ const terminateShieldOnServer = async (sessionId: string, identifier: string) =>
       .is('ended_at', null),
   ]);
 };
-
 export default function ShieldOverlay({
   sessionId,
   userId,
@@ -112,7 +107,6 @@ export default function ShieldOverlay({
   const [checkError, setCheckError] = useState<string | null>(null);
   const [gpsWarning, setGpsWarning] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-
   // استخدام نقطة الركن المحفوظة للجلسة الحالية بدلاً من الاعتماد فقط على إحداثيات الجراج الثابتة
   const [anchorCoords, setAnchorCoords] = useState<{ lat: number; lng: number }>(() => {
     const saved = loadShieldState();
@@ -121,18 +115,19 @@ export default function ShieldOverlay({
     }
     return { lat: parkingLat, lng: parkingLng };
   });
-
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isRegisteringRef = useRef(false);
+  const activatingLockRef = useRef(false);
+  const gpsErrorNotifiedRef = useRef(false);
   const lastRegisteredAtRef = useRef(0);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
-
   // ═══════════════════════════════════════════════════════════
   // 🚨 الإنذار المحلي والشديد المشترك
   // ═══════════════════════════════════════════════════════════
   const triggerLocalAlarm = useCallback((dist: number) => {
     try {
+      stopFakeAlerts();
       playUrgentSound();
       sendLocalNotification(
         '🚨 تنبيه حركة غير مصرح بها!',
@@ -148,7 +143,6 @@ export default function ShieldOverlay({
       console.warn('Alarm failed:', e);
     }
   }, []);
-
   // ═══════════════════════════════════════════════════════════
   // 🔇 إيقاف جميع الترددات والاهتزازات
   // ═══════════════════════════════════════════════════════════
@@ -159,12 +153,12 @@ export default function ShieldOverlay({
     }
     stopIntenseAlarm();
   }, []);
-
   // ═══════════════════════════════════════════════════════════
   // 🚗 معالج "أنا اللي سايق"
   // ═══════════════════════════════════════════════════════════
   const handleIamDriving = useCallback(async () => {
     stopLocalAlarm();
+    stopFakeAlerts();
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
     destroyShield();
@@ -178,12 +172,12 @@ export default function ShieldOverlay({
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
-
   // ═══════════════════════════════════════════════════════════
   // 🚨 معالج "مش أنا — سرقة!"
   // ═══════════════════════════════════════════════════════════
   const handleTheft = useCallback(async () => {
     stopLocalAlarm();
+    stopFakeAlerts();
     const flashEl = document.getElementById('shield-breach-flash-overlay');
     if (flashEl) flashEl.remove();
     sendLocalNotification('✅ تم استلام البلاغ', 'جاري التواصل والمتابعة فوراً', '/');
@@ -198,7 +192,6 @@ export default function ShieldOverlay({
     setPhase('dismissed');
     onSessionEnd?.();
   }, [sessionId, userPhone, userId, stopLocalAlarm, onSessionEnd]);
-
   // ═══════════════════════════════════════════════════════════
   // 🎧 تهيئة الصوت التلقائية
   // ═══════════════════════════════════════════════════════════
@@ -207,7 +200,22 @@ export default function ShieldOverlay({
       try { initAudioContext(); } catch {}
     }
   }, [phase]);
-
+  // ═══════════════════════════════════════════════════════════
+  // 🔔 إشعارات بنك الدرع الوهمية كل 30 دقيقة للعميل أثناء التفعيل
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (phase === 'active') {
+      startFakeAlerts();
+      return () => {
+        const saved = loadShieldState();
+        if (!saved?.isActive || saved.sessionId !== sessionId) {
+          stopFakeAlerts();
+        }
+      };
+    } else if (phase === 'breach' || phase === 'dismissed') {
+      stopFakeAlerts();
+    }
+  }, [phase, sessionId]);
   // ═══════════════════════════════════════════════════════════
   // 🚨 فلاش أحمر ثابت وقت الاختراق
   // ═══════════════════════════════════════════════════════════
@@ -241,10 +249,10 @@ export default function ShieldOverlay({
       flashEl.remove();
     };
   }, [phase]);
-
-  // ─── استرجاع حالة الدرع ───
+  // ─── استرجاع حالة الدرع (فقط عند البداية phase === 'ask' حتى لا يُلغي شاشة الاختراق) ───
   useEffect(() => {
-    if (autoResume && phase === 'ask') {
+    if (phase !== 'ask') return;
+    if (autoResume) {
       const saved = loadShieldState();
       if (saved?.sessionId === sessionId) {
         setShieldCode(saved.shieldCode);
@@ -283,11 +291,11 @@ export default function ShieldOverlay({
       setPhase('active');
     }
   }, [garageId, sessionId, autoResume, phase, userPhone, anchorCoords.lat, anchorCoords.lng]);
-
   // ─── تتبع الـ GPS والسرعة عبر المحرك الموحد ───
   const isTracking = phase === 'active' || phase === 'breach';
   useEffect(() => {
     if (!isTracking) return;
+    gpsErrorNotifiedRef.current = false;
     const cleanupGPS = startShieldGPS({
       sessionId,
       parkingLat: anchorCoords.lat,
@@ -299,33 +307,32 @@ export default function ShieldOverlay({
       },
       onGPSError: () => {
         setGpsWarning(true);
-        sendLocalNotification(
-          '⚠️ الـ GPS مقفول!',
-          'فعّل الموقع عشان رادار المراقبة يفضل شغال',
-          '/'
-        );
+        if (!gpsErrorNotifiedRef.current) {
+          gpsErrorNotifiedRef.current = true;
+          sendLocalNotification(
+            '⚠️ الـ GPS مقفول!',
+            'فعّل الموقع عشان رادار المراقبة يفضل شغال',
+            '/'
+          );
+        }
       },
     });
     return () => {
       cleanupGPS();
     };
   }, [isTracking, sessionId, anchorCoords.lat, anchorCoords.lng, triggerLocalAlarm]);
-
   // ─── التسجيل على السيرفر (مع منع التكرار المتزامن) ───
   const registerOnServer = useCallback(async () => {
     if (isRegisteringRef.current) return;
     if (Date.now() - lastRegisteredAtRef.current < 5000) return;
     isRegisteringRef.current = true;
-
     const saved = loadShieldState();
     const effLat = saved?.sessionId === sessionId && saved.parkingLat ? saved.parkingLat : anchorCoords.lat;
     const effLng = saved?.sessionId === sessionId && saved.parkingLng ? saved.parkingLng : anchorCoords.lng;
-
     const identifier = userPhone || userId || 'unknown';
     let pushEndpoint: string | null = null;
     let pushP256dh: string | null = null;
     let pushAuth: string | null = null;
-
     try {
       if ('serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
@@ -359,7 +366,6 @@ export default function ShieldOverlay({
     } catch (swErr) {
       console.warn('⚠️ Service Worker not ready:', swErr);
     }
-
     try {
       const { data: existing } = await supabase
         .from('shield_sessions')
@@ -367,7 +373,6 @@ export default function ShieldOverlay({
         .eq('session_id', sessionId)
         .is('ended_at', null)
         .maybeSingle();
-
       if (existing) {
         await Promise.all([
           supabase
@@ -383,13 +388,11 @@ export default function ShieldOverlay({
         lastRegisteredAtRef.current = Date.now();
         return;
       }
-
       await supabase
         .from('shield_sessions')
         .update({ ended_at: new Date().toISOString() })
         .eq('phone', identifier)
         .is('ended_at', null);
-
       await Promise.all([
         supabase.from('shield_sessions').insert({
           session_id: sessionId,
@@ -419,7 +422,6 @@ export default function ShieldOverlay({
       isRegisteringRef.current = false;
     }
   }, [sessionId, userId, userPhone, anchorCoords.lat, anchorCoords.lng, garageId]);
-
   // ─── تجديد اشتراك الـ Push كل 10 دقائق ───
   useEffect(() => {
     if (phase !== 'active') return;
@@ -463,7 +465,6 @@ export default function ShieldOverlay({
     const interval = setInterval(refreshSubscription, 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, [phase, sessionId, userPhone, userId, garageId, anchorCoords.lat, anchorCoords.lng]);
-
   // ─── Realtime listener ───
   useEffect(() => {
     if (phase !== 'active') return;
@@ -486,7 +487,6 @@ export default function ShieldOverlay({
       supabase.removeChannel(channel);
     };
   }, [phase, sessionId, triggerLocalAlarm]);
-
   // ─── Service Worker Messages ───
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
@@ -508,26 +508,28 @@ export default function ShieldOverlay({
       navigator.serviceWorker.removeEventListener('message', handleSWMessage);
     };
   }, [handleIamDriving, triggerLocalAlarm]);
-
   // ─── Cleanup ───
   useEffect(() => {
     return () => {
       stopLocalAlarm();
-      destroyShield();
+      const saved = loadShieldState();
+      if (!saved?.isActive || saved.sessionId !== sessionId) {
+        destroyShield();
+      }
       const leftover = document.getElementById('shield-breach-flash-overlay');
       if (leftover) leftover.remove();
     };
-  }, [stopLocalAlarm]);
-
+  }, [stopLocalAlarm, sessionId]);
   useEffect(() => {
     if (phase !== 'active') return;
     registerOnServer();
   }, [phase, registerOnServer]);
-
   // ═══════════════════════════════════════════════════════
   // 🎯 handleYes — تفعيل الدرع يدوياً
   // ═══════════════════════════════════════════════════════
   const handleYes = useCallback(async () => {
+    if (activatingLockRef.current) return;
+    activatingLockRef.current = true;
     initAudioContext();
     unlockAudio();
     setCheckError(null);
@@ -547,7 +549,6 @@ export default function ShieldOverlay({
       const actualLat = check.lat ?? parkingLat;
       const actualLng = check.lng ?? parkingLng;
       setAnchorCoords({ lat: actualLat, lng: actualLng });
-
       try {
         await subscribeToPush(garageId, userPhone || undefined);
       } catch (pushErr) {
@@ -563,8 +564,10 @@ export default function ShieldOverlay({
         .from('sessions')
         .update({ shield_cost: SHIELD_COST })
         .eq('id', sessionId)
-        .then(() => {})
-        .catch((e) => console.warn('⚠️ Failed to save shield cost:', e));
+        .then(
+          () => {},
+          (e) => console.warn('⚠️ Failed to save shield cost:', e)
+        );
       setIsChecking(false);
       if (userPhone) {
         const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -588,28 +591,33 @@ export default function ShieldOverlay({
       setIsChecking(false);
       console.error('❌ Shield activation error:', e);
       setCheckError(e?.message || 'حصل خطأ، جرّب تاني');
+    } finally {
+      activatingLockRef.current = false;
     }
   }, [userPhone, garageId, sessionId, parkingLat, parkingLng, onDeductWallet, onNavigateToWallet, registerOnServer]);
-
   const handleRegister = useCallback(async () => {
-    if (phone.length < 10) return;
-    initAudioContext();
-    const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    setShieldCode(code);
-    setPhase('active');
-    saveShieldState({
-      isActive: true,
-      shieldCode: code,
-      phone,
-      garageId,
-      parkingLat: anchorCoords.lat,
-      parkingLng: anchorCoords.lng,
-      sessionId,
-      anchorLocked: true,
-    });
-    await registerOnServer();
+    if (activatingLockRef.current || phone.length < 10) return;
+    activatingLockRef.current = true;
+    try {
+      initAudioContext();
+      const code = 'SH-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+      setShieldCode(code);
+      setPhase('active');
+      saveShieldState({
+        isActive: true,
+        shieldCode: code,
+        phone,
+        garageId,
+        parkingLat: anchorCoords.lat,
+        parkingLng: anchorCoords.lng,
+        sessionId,
+        anchorLocked: true,
+      });
+      await registerOnServer();
+    } finally {
+      activatingLockRef.current = false;
+    }
   }, [phone, garageId, sessionId, anchorCoords.lat, anchorCoords.lng, registerOnServer]);
-
   if (dismissed) {
     return (
       <button
@@ -641,9 +649,7 @@ export default function ShieldOverlay({
       </button>
     );
   }
-
   if (phase === 'dismissed') return null;
-
   return (
     <div className="w-full flex flex-col items-center gap-2">
       <style>{`
