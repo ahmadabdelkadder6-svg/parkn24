@@ -1,3 +1,4 @@
+
 // src/components/GarageListScreen.tsx
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,7 +14,6 @@ import TopUpWalletModal from './TopUpWalletModal';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { QRCodeCanvas } from 'qrcode.react';
-
 const BRAND = {
   blue: '#1656b8',
   blueDark: '#0e3a7d',
@@ -30,16 +30,13 @@ const BRAND = {
   navy: '#0a1628',
   shieldGold: '#d97706'
 };
-
 const MIN_UI_MOVE_METERS = 25;
 const LAST_COORDS_STORAGE_KEY = 'parkn24_last_user_coords';
-
 interface GarageWithDistance extends Garage {
   distance: number;
   minutes: number;
   classification: 'nearby' | 'far';
 }
-
 interface GarageCardProps {
   garage: GarageWithDistance;
   index: number;
@@ -51,7 +48,6 @@ interface GarageCardProps {
   hasIncomingCar: boolean;
   disabled: boolean;
 }
-
 const safeParseTime = (value: unknown): number => {
   if (!value) return 0;
   if (typeof value === 'string') {
@@ -63,9 +59,7 @@ const safeParseTime = (value: unknown): number => {
   }
   return 0;
 };
-
 const SITE_URL = import.meta.env.VITE_SITE_URL || 'https://parkn24.com';
-
 export const OFFICIAL_AREAS = [
   'وسط البلد والزمالك',
   'المعادي والمقطم',
@@ -81,7 +75,6 @@ export const OFFICIAL_AREAS = [
   'القناة والدلتا',
   'العاشر من رمضان',
 ] as const;
-
 const AREA_ICONS: Record<string, string> = {
   'وسط البلد والزمالك': '🏛️',
   'المعادي والمقطم': '🌳',
@@ -97,7 +90,6 @@ const AREA_ICONS: Record<string, string> = {
   'القناة والدلتا': '🌾',
   'العاشر من رمضان': '🏭',
 };
-
 const DIRECT_AREA_MAP: Record<string, string> = {
   'وسط البلد': 'وسط البلد والزمالك',
   'الزمالك': 'وسط البلد والزمالك',
@@ -149,7 +141,6 @@ const DIRECT_AREA_MAP: Record<string, string> = {
   'العاشر': 'العاشر من رمضان',
   'مدينة العاشر من رمضان': 'العاشر من رمضان'
 };
-
 // ⚡ كاش ذكي لتسريع الـ RegEx ومنع هبوط الفريمات مع سقف أمان للذاكرة
 const canonicalAreaCache = new Map<string, string>();
 export const getCanonicalArea = (rawArea?: string, name: string = '', location: string = ''): string => {
@@ -197,7 +188,6 @@ export const getCanonicalArea = (rawArea?: string, name: string = '', location: 
   canonicalAreaCache.set(cacheKey, result);
   return result;
 };
-
 const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: number }> = {
   'وسط البلد والزمالك': { lat: 30.0480, lng: 31.2300, maxRadiusKm: 6.0 },
   'المعادي والمقطم': { lat: 29.9800, lng: 31.2800, maxRadiusKm: 12.0 },
@@ -213,14 +203,12 @@ const AREA_CENTERS: Record<string, { lat: number; lng: number; maxRadiusKm: numb
   'القناة والدلتا': { lat: 30.8500, lng: 31.2000, maxRadiusKm: 70.0 },
   'العاشر من رمضان': { lat: 30.3080, lng: 31.7420, maxRadiusKm: 15.0 },
 };
-
 export default function GarageListScreen() {
   const {
     garages, setSelectedGarageId, setScreen, currentUser, sessions, incomingCars,
     offers, acknowledgedSessionIds, walletTopUps, reportPriceUpdate,
     chargeBookingFee, addIncomingCar, getDailyDeductionCount
   } = useStore();
-
   const [searchQuery, setSearchQuery] = useState('');
   const [showNearbyOnly, setShowNearbyOnly] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -232,7 +220,6 @@ export default function GarageListScreen() {
   const [reportingGarage, setReportingGarage] = useState<GarageWithDistance | null>(null);
   const [updatedPriceInput, setUpdatedPriceInput] = useState<number | ''>(20);
   const [isSubmittingPrice, setIsSubmittingPrice] = useState(false);
-
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(() => {
     try {
       const saved = localStorage.getItem(LAST_COORDS_STORAGE_KEY);
@@ -251,17 +238,13 @@ export default function GarageListScreen() {
     } catch {}
     return { lat: 30.0444, lng: 31.2357 };
   });
-
   const [locationLoading, setLocationLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
-
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [pendingVipGarage, setPendingVipGarage] = useState<GarageWithDistance | null>(null);
-
   const [rescueIndex, setRescueIndex] = useState(0);
   const MAX_RESCUE_OPTIONS = 3;
-
   const isMountedRef = useRef(true);
   const bookingLockRef = useRef(false);
   const lastLocationRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -272,15 +255,12 @@ export default function GarageListScreen() {
   const totalStopDurationRef = useRef<number>(0);
   const lastGpsTickRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   const toastedTopupIdsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
-
   const normalizedUserPlate = useMemo(() => normalizePlate(currentUser?.carPlate), [currentUser?.carPlate]);
   const cleanUserPhone = useMemo(() => currentUser?.phone ? normalizePhone(currentUser.phone) : '', [currentUser?.phone]);
-
   const activeSession = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
     return sessions
@@ -293,7 +273,6 @@ export default function GarageListScreen() {
       })
       .sort((a, b) => safeParseTime(b.startTime) - safeParseTime(a.startTime))[0];
   }, [sessions, normalizedUserPlate, cleanUserPhone, acknowledgedSessionIds]);
-
   const hasCompletedSession = useMemo(() => {
     if (activeSession) return false;
     return sessions.some((s: Session & { customerPhone?: string; userPhone?: string }) => {
@@ -303,7 +282,6 @@ export default function GarageListScreen() {
       return samePlate || Boolean(cleanUserPhone && sPhoneClean === cleanUserPhone);
     });
   }, [sessions, normalizedUserPlate, cleanUserPhone, activeSession]);
-
   const myIncomingCar = useMemo(() => {
     if (!normalizedUserPlate && !cleanUserPhone) return undefined;
     return incomingCars
@@ -315,7 +293,6 @@ export default function GarageListScreen() {
       })
       .sort((a, b) => safeParseTime(b.startTime || 0) - safeParseTime(a.startTime || 0))[0];
   }, [incomingCars, normalizedUserPlate, cleanUserPhone]);
-
   const myTopUps = useMemo(() => {
     if (!cleanUserPhone || !walletTopUps) return [];
     return walletTopUps
@@ -323,9 +300,7 @@ export default function GarageListScreen() {
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, 3);
   }, [walletTopUps, cleanUserPhone]);
-
   const pendingTopUpsCount = useMemo(() => myTopUps.filter((w) => w.status === 'pending').length, [myTopUps]);
-
   // تثبيت المراجع للحفاظ على ثبات دالة handleGarageClick وعدم كسر memo الكروت
   const bookingContextRef = useRef({
     currentUser,
@@ -334,7 +309,6 @@ export default function GarageListScreen() {
     offers,
     cleanUserPhone
   });
-
   useEffect(() => {
     bookingContextRef.current = {
       currentUser,
@@ -344,14 +318,12 @@ export default function GarageListScreen() {
       cleanUserPhone
     };
   }, [currentUser, activeSession, myIncomingCar, offers, cleanUserPhone]);
-
   const stopGpsWatch = useCallback(() => {
     if (watchIdRef.current !== null && 'geolocation' in navigator) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
   }, []);
-
   const getUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       toast.error('خدمة تحديد الموقع غير مدعومة في متصفحك');
@@ -439,13 +411,11 @@ export default function GarageListScreen() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
   }, [stopGpsWatch]);
-
   const handleForceRefreshLocation = useCallback(() => {
     lastLocationRef.current = null;
     getUserLocation();
     toast.success('🚀 تم تحديث رادار الموقع الدقيق', { duration: 2500, icon: '📍' });
   }, [getUserLocation]);
-
   // إيقاف الـ GPS تلقائياً في الخلفية لتوفير البطارية واستئنافه عند العودة
   useEffect(() => {
     getUserLocation();
@@ -462,7 +432,6 @@ export default function GarageListScreen() {
       stopGpsWatch();
     };
   }, [getUserLocation, stopGpsWatch]);
-
   // 🔄 إشعار فوري للعميل عند اعتماد شحن محفظته (بدون استدعاء fetchAll لأن الـ Store يحدث الرصيد لحظياً في الذاكرة)
   useEffect(() => {
     if (!cleanUserPhone) return;
@@ -488,7 +457,6 @@ export default function GarageListScreen() {
       supabase.removeChannel(channel);
     };
   }, [cleanUserPhone]);
-
   // حساب المسافات لجميع الجراجات مرتبة بالأقرب دائماً
   const garagesWithDistance: GarageWithDistance[] = useMemo(() => {
     return garages
@@ -500,7 +468,6 @@ export default function GarageListScreen() {
       })
       .sort((a, b) => a.distance - b.distance);
   }, [garages, userLocation]);
-
   // 🎯 خوارزمية المنقذ السريع الذكية: رصد أقرب جراجات VIP
   const MAX_RESCUE_RADIUS_KM = 20;
   const rescueGaragesList = useMemo(() => {
@@ -515,21 +482,17 @@ export default function GarageListScreen() {
       )
       .slice(0, MAX_RESCUE_OPTIONS);
   }, [garagesWithDistance, userLocation.lat, userLocation.lng]);
-
   const currentRescueGarage = rescueGaragesList[rescueIndex] || null;
-
   useEffect(() => {
     setRescueIndex(0);
   }, [rescueGaragesList.length]);
-
   const handleNextRescue = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (rescueGaragesList.length <= 1) return;
     const nextIndex = (rescueIndex + 1) % rescueGaragesList.length;
     setRescueIndex(nextIndex);
-    toast.success(`ركنة بديلة ${nextIndex + 1} من ${rescueGaragesList.length}: ${rescueGaragesList[nextIndex]?.name} 🚗`, { duration: 1800 });
+    toast.success(`ركنة بديلة ${nextIndex + 1} من ${rescueGaragesList.length}: ${rescueGaragesList[nextIndex]?.name} — اضغط على الجراج للانتقال لشاشة التوجيه 🧭`, { duration: 2200 });
   }, [rescueIndex, rescueGaragesList]);
-
   const filteredGarages = useMemo(() => {
     let filtered = garagesWithDistance.filter((g) => g.garageType === activeTab);
     if (searchQuery.trim()) {
@@ -545,7 +508,6 @@ export default function GarageListScreen() {
     }
     return filtered;
   }, [garagesWithDistance, searchQuery, showNearbyOnly, activeTab]);
-
   const areaGroups = useMemo(() => {
     const groups: Record<string, GarageWithDistance[]> = {};
     filteredGarages.forEach((g) => {
@@ -565,15 +527,12 @@ export default function GarageListScreen() {
         return minA - minB;
       });
   }, [filteredGarages]);
-
   useEffect(() => {
     if (searchQuery.trim() && areaGroups.length > 0) setExpandedArea(areaGroups[0].name);
   }, [searchQuery, areaGroups]);
-
   // 💰 عملية الحجز والتوجيه الذكي (مستقرة مرجعياً 100% لمنع إعادة رسم الكروت)
   const handleGarageClick = useCallback(async (garage: GarageWithDistance) => {
     if (bookingLockRef.current) return;
-
     const {
       currentUser: user,
       activeSession: currActiveSession,
@@ -581,7 +540,6 @@ export default function GarageListScreen() {
       offers: currOffers,
       cleanUserPhone: userPhoneClean
     } = bookingContextRef.current;
-
     if (garage.garageType === 'directory') {
       const canonicalZone = getCanonicalArea(garage.area, garage.name, garage.location);
       const areaCenter = AREA_CENTERS[canonicalZone];
@@ -603,7 +561,6 @@ export default function GarageListScreen() {
       toast.success(`رحلة سعيدة! جاري توجيهك إلى ${garage.name} 🧭`, { icon: '🚙' });
       return;
     }
-
     if (!user) {
       toast.error('سجل بياناتك أولاً');
       return;
@@ -626,7 +583,6 @@ export default function GarageListScreen() {
       toast.error('لا توجد أماكن متاحة حالياً');
       return;
     }
-
     const resolvedHourlyPrice = Number(garage.basePrice || garage.pricePerHour || 15) > 0
       ? Number(garage.basePrice || garage.pricePerHour || 15)
       : 15;
@@ -634,7 +590,6 @@ export default function GarageListScreen() {
     const userWallet = user.wallet || 0;
     const todayCount = getDailyDeductionCount();
     const isFreeToday = todayCount >= 2;
-
     if (hasPaidBookingFee) {
       bookingLockRef.current = true;
       setIsBooking(true);
@@ -659,14 +614,12 @@ export default function GarageListScreen() {
       }
       return;
     }
-
     const MIN_REQUIRED_BALANCE = isFreeToday ? 7 : 10;
     if (userWallet < MIN_REQUIRED_BALANCE) {
       setPendingVipGarage(garage);
       setShowInsufficientModal(true);
       return;
     }
-
     bookingLockRef.current = true;
     setIsBooking(true);
     try {
@@ -699,7 +652,6 @@ export default function GarageListScreen() {
       setIsBooking(false);
     }
   }, [getDailyDeductionCount, addIncomingCar, setSelectedGarageId, setScreen, chargeBookingFee]);
-
   const handleConfirmArrival = useCallback(async () => {
     if (!activeDirectoryTrip) return;
     const tripToCalibrate = activeDirectoryTrip;
@@ -732,12 +684,10 @@ export default function GarageListScreen() {
       }, () => {}, { enableHighAccuracy: true, timeout: 6000 });
     }
   }, [activeDirectoryTrip, cleanUserPhone]);
-
   const handleOpenPriceReport = useCallback((g: GarageWithDistance) => {
     setReportingGarage(g);
     setUpdatedPriceInput(g.priceType === 'daily' ? (g.dailyPrice || g.basePrice || g.pricePerHour || 20) : (g.basePrice || g.pricePerHour || 20));
   }, []);
-
   const handleSubmitPriceUpdate = async () => {
     const finalPrice = updatedPriceInput === '' ? (reportingGarage?.basePrice || reportingGarage?.pricePerHour || 20) : updatedPriceInput;
     if (!reportingGarage || finalPrice <= 0) return;
@@ -760,7 +710,6 @@ export default function GarageListScreen() {
       setIsSubmittingPrice(false);
     }
   };
-
   return (
     <div className="h-full flex flex-col overflow-hidden relative select-none" style={{ background: BRAND.bg, color: BRAND.navy }}>
       
@@ -800,7 +749,6 @@ export default function GarageListScreen() {
               </div>
             </div>
           </div>
-
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
@@ -849,7 +797,6 @@ export default function GarageListScreen() {
             </button>
           </div>
         </div>
-
         {/* بانر المنقذ السريع */}
         {currentRescueGarage && !activeSession && !myIncomingCar && (
           <div
@@ -912,10 +859,26 @@ export default function GarageListScreen() {
                   <Navigation size={20} className="rotate-45 text-slate-950 stroke-[2.5]" />
                 </div>
               </div>
+              <div
+                className="mt-2.5 py-2 px-3 rounded-xl flex items-center justify-between gap-2 shadow-sm transition-transform active:scale-[0.99]"
+                style={{
+                  background: BRAND.green,
+                  border: `1.5px solid ${BRAND.greenDark}`,
+                  color: BRAND.blueDeep
+                }}
+              >
+                <span className="text-[11px] sm:text-xs font-black flex items-center gap-1.5">
+                  <span>👆</span>
+                  <span>اضغط هنا لتأكيد الجراج والانتقال لشاشة التوجيه</span>
+                </span>
+                <span className="text-[10px] sm:text-[11px] font-black px-2 py-0.5 rounded-lg bg-slate-950/15 text-slate-950 shrink-0 flex items-center gap-1">
+                  <span>ابدأ المسار</span>
+                  <Navigation size={12} className="rotate-45 stroke-[2.5]" />
+                </span>
+              </div>
             </div>
           </div>
         )}
-
         {/* زر الركنة البديلة */}
         {rescueGaragesList.length > 1 && !activeSession && !myIncomingCar && (
           <button
@@ -940,7 +903,6 @@ export default function GarageListScreen() {
             </div>
           </button>
         )}
-
         {/* إشعارات الجلسة النشطة */}
         {activeSession && (
           <button
@@ -955,7 +917,6 @@ export default function GarageListScreen() {
             </span>
           </button>
         )}
-
         {!activeSession && myIncomingCar && (
           <button
             type="button"
@@ -969,7 +930,6 @@ export default function GarageListScreen() {
             </span>
           </button>
         )}
-
         {/* شريط البحث */}
         <div className="flex gap-2 mb-2">
           <div className="relative flex-1">
@@ -1030,7 +990,6 @@ export default function GarageListScreen() {
             {showNearbyOnly ? '🌍 الكل' : '📍 القريب'}
           </button>
         </div>
-
         {/* التبويبات */}
         <div className="flex p-1 rounded-xl bg-slate-100" style={{ direction: 'rtl', border: `1px solid ${BRAND.border}` }}>
           <button
@@ -1059,7 +1018,6 @@ export default function GarageListScreen() {
           </button>
         </div>
       </div>
-
       {/* قائمة المناطق والساحات */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8">
         {areaGroups.length > 0 ? (
@@ -1158,7 +1116,6 @@ export default function GarageListScreen() {
           </div>
         )}
       </div>
-
       {/* مودال رصيدك غير كافي */}
       <AnimatePresence>
         {showInsufficientModal && pendingVipGarage && (
@@ -1257,7 +1214,6 @@ export default function GarageListScreen() {
           </div>
         )}
       </AnimatePresence>
-
       {/* القائمة الذكية */}
       <AnimatePresence>
         {showSmartMenu && (
@@ -1350,9 +1306,7 @@ export default function GarageListScreen() {
           </div>
         )}
       </AnimatePresence>
-
       <AnimatePresence>{showTopUp && <TopUpWalletModal onClose={() => setShowTopUp(false)} />}</AnimatePresence>
-
       {/* مودال QR */}
       <AnimatePresence>
         {showQrModal && (
@@ -1416,7 +1370,6 @@ export default function GarageListScreen() {
           </div>
         )}
       </AnimatePresence>
-
       {/* نافذة الإبلاغ عن تعديل السعر */}
       <AnimatePresence>
         {reportingGarage && (
@@ -1499,7 +1452,6 @@ export default function GarageListScreen() {
           </div>
         )}
       </AnimatePresence>
-
       {/* شاشة طريق السلامة */}
       <AnimatePresence>
         {activeDirectoryTrip && (
@@ -1589,7 +1541,6 @@ export default function GarageListScreen() {
     </div>
   );
 }
-
 /* ══════════════════════════════════════════════════════════════
    🚗 كارت الساحة مع حماية الأداء التامة
    ══════════════════════════════════════════════════════════════ */
@@ -1605,14 +1556,12 @@ const GarageCard = memo(function GarageCard({
   const isVip = garage.garageType === 'vip';
   const isBusy = hasActiveSession || hasIncomingCar;
   const isFull = !isDirectory && garage.availableSpots === 0;
-
   const btnBg = (() => {
     if (isDirectory) return BRAND.blueDark;
     if (isFull) return BRAND.borderDark;
     if (isBusy) return BRAND.greenDark;
     return BRAND.blue;
   })();
-
   const btnLabel = (() => {
     if (isDirectory) return 'افتح الاتجاهات 🗺️';
     if (isFull) return 'ممتلئ حالياً';
@@ -1620,28 +1569,23 @@ const GarageCard = memo(function GarageCard({
     if (hasIncomingCar) return 'الحجز النشط 📍';
     return `احجز مكانك بـ ${BOOKING_FEE} ج.م 🛡️`;
   })();
-
   const displayPrice = (() => {
     if (garage.priceType === 'daily') return `${garage.dailyPrice || garage.basePrice || garage.pricePerHour || 15}`;
     if (garage.priceType === 'monthly') return `${garage.monthlyPrice || 1500}`;
     return `${garage.basePrice || garage.pricePerHour || 15}`;
   })();
-
   const priceUnit = (() => {
     if (garage.priceType === 'daily') return 'ج.م / يومي';
     if (garage.priceType === 'monthly') return 'ج.م / شهري';
     return 'ج.م / ساعة';
   })();
-
   const handleCardSelect = useCallback(() => {
     if (!disabled && !isFull) onSelect(garage);
   }, [disabled, isFull, onSelect, garage]);
-
   const handlePriceReportClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onReportPrice(garage);
   }, [onReportPrice, garage]);
-
   return (
     <div
       className="p-3 text-right relative bg-white rounded-2xl transition-all"
