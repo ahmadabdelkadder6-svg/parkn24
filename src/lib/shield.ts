@@ -30,13 +30,13 @@ export const GEOFENCE_RADIUS_METERS = 50;
 export const GEOFENCE_RADIUS = 50; // للتوافق العكسي مع الشاشات
 export const ALERT_DISTANCE = 50; // للتوافق العكسي
 export const MIN_MOVEMENT_METERS = 30; // حد إرسال التحديث للسيرفر
-export const FALLBACK_INTERVAL_MS = 12_000; // نبض خلفي كل 12 ثانية بدون أي حمل سيرفر
+export const FALLBACK_INTERVAL_MS = 8_000; // نبض خلفي كل 8 ثوانٍ لسرعة اللقط في الجيب بدون أي حمل سيرفر
 // ─── 🧠 ثوابت السرعة والانطلاق وفترة التثبيت ───
-export const SPEED_THRESHOLD_MPS = 3.0; // 3.0 م/ث = ~11 كم/س (سرعة حركة سيارة حقيقية)
+export const SPEED_THRESHOLD_MPS = 3.0; // 3.0 م/ث = ~11 كم/س (سرعة حركة سيارة حقيقية، أعلى من سرعة المشي البشري)
 export const CAR_SPEED_THRESHOLD = 3.0;
 export const CAR_GRACE_MS = 1_000; // ثانية واحدة فقط للتأكيد لسرعة الاستجابة القصوى
 export const STABILIZATION_MS = 4_000; // 4 ثوانٍ تثبيت أولي عند تشغيل الـ GPS
-export const MAX_ALLOWED_ACCURACY_METERS = 45; // استبعاد الإشارات المشوشة لمنع الإنذارات الكاذبة
+export const MAX_ALLOWED_ACCURACY_METERS = 75; // سماحية مدروسة للموبايل داخل الجيب وصالون السيارة مع رفض شطحات الشبكة العشوائية
 // ─── ⏱️ ثوابت ترشيد استهلاك السيرفر (Throttle) ───
 const GPS_SERVER_THROTTLE_MS = 15_000; // حد أدنى 15 ثانية بين كل استعلام تحديث للسيرفر لتوفير الحمل
 // صوت سارينة احترافي نقي ومتوازن
@@ -419,6 +419,9 @@ let sharedAudioCtx: AudioContext | null = null;
 let keepAliveSource: AudioBufferSourceNode | null = null;
 let silentAudioEl: HTMLAudioElement | null = null;
 let prewarmedSirenAudio: HTMLAudioElement | null = null;
+let sirenAudioBuffer: AudioBuffer | null = null;
+let sirenBufferSource: AudioBufferSourceNode | null = null;
+let isFetchingSirenBuffer = false;
 let wakeLockSentinel: any = null;
 let isAudioKeepAliveActive = false;
 let alarmAudioCtx: AudioContext | null = null;
@@ -434,6 +437,35 @@ export function initAudioContext(): void {
     }
     if (sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
+    }
+    // الحفاظ على AudioContext نشطاً في الخلفية عبر مصدر صامت (0 dB) بدون أي صوت مسموع نهائياً
+    if (sharedAudioCtx && !keepAliveSource) {
+      try {
+        const silentBuf = sharedAudioCtx.createBuffer(1, sharedAudioCtx.sampleRate, sharedAudioCtx.sampleRate);
+        const src = sharedAudioCtx.createBufferSource();
+        const zeroGain = sharedAudioCtx.createGain();
+        zeroGain.gain.value = 0;
+        src.buffer = silentBuf;
+        src.loop = true;
+        src.connect(zeroGain);
+        zeroGain.connect(sharedAudioCtx.destination);
+        src.start();
+        keepAliveSource = src;
+      } catch {}
+    }
+    // تحميل وفك تشفير صوت السارينة في الذاكرة للعمل فوراً حتى والشاشة مقفولة
+    if (sharedAudioCtx && !sirenAudioBuffer && !isFetchingSirenBuffer) {
+      isFetchingSirenBuffer = true;
+      fetch(SIREN_AUDIO_URL)
+        .then((res) => res.arrayBuffer())
+        .then((arr) => sharedAudioCtx ? sharedAudioCtx.decodeAudioData(arr) : null)
+        .then((decoded) => {
+          if (decoded) sirenAudioBuffer = decoded;
+        })
+        .catch(() => {})
+        .finally(() => {
+          isFetchingSirenBuffer = false;
+        });
     }
   } catch (e) {
     console.warn('AudioContext init failed:', e);
@@ -470,7 +502,7 @@ export function armBackgroundAudio(): void {
       } catch {}
     }
 
-    // 2. تشغيل ملف الموجة الصامتة (0 dB بدون أي صوت نهائياً) للحفاظ على مسار الصوت نشطاً في الخلفية
+    // 2. تشغيل ملف الموجة الصامتة (PCM 0x00 بدون أي تردد صوتي نهائياً) للحفاظ على جلسة الميديا حية والشاشة مقفلة
     if (!silentAudioEl) {
       silentAudioEl = new Audio(SILENT_WAV_BASE64);
       silentAudioEl.loop = true;
@@ -521,7 +553,7 @@ export function unlockAndKeepAliveAudio(): void {
 export function triggerBreachAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
-  // 1. تشغيل صوت السارينة الواضح والنقي بمستوى متوازن عند الاختراق فقط
+  // 1. تشغيل صوت السارينة عبر AudioElement وعبر WebAudio معاً لضمان العمل حتى والشاشة مقفلة في الجيب
   if (!prewarmedSirenAudio) {
     try {
       prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
@@ -538,7 +570,7 @@ export function triggerBreachAlarm(): void {
       console.warn('⚠️ Siren play failed:', e);
     }
   }
-  // 2. إضافة نغمة تحذيرية ناعمة ودافئة (Harmonic Chime Sweep) بدلاً من الصفير المزعج
+  // 2. تشغيل السارينة والنغمة التحذيرية عبر AudioContext النشط مسبقاً في الخلفية
   try {
     initAudioContext();
     const ctx = sharedAudioCtx;
@@ -547,6 +579,20 @@ export function triggerBreachAlarm(): void {
         ctx.resume().catch(() => {});
       }
       alarmAudioCtx = ctx;
+      // تشغيل بافر السارينة المجهز مسبقاً داخل AudioContext لضمان عدم حظره والشاشة مقفلة
+      if (sirenAudioBuffer && !sirenBufferSource) {
+        try {
+          const bufSrc = ctx.createBufferSource();
+          const bufGain = ctx.createGain();
+          bufSrc.buffer = sirenAudioBuffer;
+          bufSrc.loop = true;
+          bufGain.gain.value = 0.75;
+          bufSrc.connect(bufGain);
+          bufGain.connect(ctx.destination);
+          bufSrc.start(0);
+          sirenBufferSource = bufSrc;
+        } catch {}
+      }
       const now = alarmAudioCtx.currentTime;
       const osc = alarmAudioCtx.createOscillator();
       const gain = alarmAudioCtx.createGain();
@@ -603,6 +649,13 @@ export function stopIntenseAlarm(): void {
       prewarmedSirenAudio.currentTime = 0;
     } catch { /* ignore */ }
   }
+  if (sirenBufferSource) {
+    try {
+      sirenBufferSource.stop();
+      sirenBufferSource.disconnect();
+    } catch { /* ignore */ }
+    sirenBufferSource = null;
+  }
   try {
     alarmOscillators.forEach((osc) => {
       try { osc.stop(); } catch { /* ignore */ }
@@ -640,7 +693,7 @@ let lastSentLng = 0;
 let breachStartTime: number | null = null;
 let consecutiveBreachCount = 0;
 let isCurrentlyOutside = false;
-let prevPos: { lat: number; lng: number; t: number } | null = null;
+let prevPos: { lat: number; lng: number; t: number; distFromGarage: number } | null = null;
 let posHistory: Array<{ lat: number; lng: number; t: number; distFromGarage: number }> = [];
 let watchStartTime = 0;
 let visibilityHandler: (() => void) | null = null;
@@ -681,56 +734,102 @@ export function startShieldGPS(params: {
     const elapsed = now - watchStartTime;
     const distFromGarage = haversine(lat, lng, params.parkingLat, params.parkingLng);
     if (elapsed < STABILIZATION_MS) {
-      prevPos = { lat, lng, t: now };
+      prevPos = { lat, lng, t: now, distFromGarage };
       posHistory = [{ lat, lng, t: now, distFromGarage }];
       return;
     }
     if (accuracy && accuracy > MAX_ALLOWED_ACCURACY_METERS) {
       return;
     }
-    let speed = (rawSpeed !== null && rawSpeed > 0) ? rawSpeed : 0;
-    // 1. حساب السرعة المباشر بين نقطتين
+
+    // 1. فحص سرعة الدوبلر الحقيقية من القمر الصناعي (أدق مؤشر لحركة السيارة الفورية بدون تأثر بشطحات الإحداثيات)
+    const hasReliableAccuracy = !accuracy || accuracy <= 65;
+    const isDopplerCarSpeed =
+      rawSpeed !== null &&
+      rawSpeed >= SPEED_THRESHOLD_MPS &&
+      rawSpeed < 55 &&
+      hasReliableAccuracy;
+
+    let speed = (rawSpeed !== null && rawSpeed > 0 && rawSpeed < 55) ? rawSpeed : 0;
+
+    // 2. حساب السرعة المباشر بين نقطتين (مع اشتراط حركة فعلية >= 12 متر وابتعاد عن الجراج لمنع شطحات الوقوف/المشي)
     if (prevPos) {
       const d = haversine(prevPos.lat, prevPos.lng, lat, lng);
       const dt = (now - prevPos.t) / 1000;
-      if (dt > 0.4 && d >= 10) {
+      const radialStep = distFromGarage - prevPos.distFromGarage;
+      if (dt >= 1.2 && d >= 12 && (radialStep >= 5 || distFromGarage > GEOFENCE_RADIUS_METERS + 20)) {
         const calculatedSpeed = d / dt;
         if (calculatedSpeed < 55) {
           speed = Math.max(speed, calculatedSpeed);
         }
       }
     }
-    prevPos = { lat, lng, t: now };
-    // 2. نافذة حساب سرعة دقيقة (Sliding Window 2s..15s) لالتقاط سرعة السيارة حتى لو كان watchPosition يحدث كل ثانية والـ rawSpeed = null
+    prevPos = { lat, lng, t: now, distFromGarage };
+
+    // 3. نافذة حساب سرعة دقيقة (Sliding Window 2.5s..25s) مع فلتر استقامة المسار (Straightness Filter)
+    // يضمن التفريق القاطع بين حركة السيارة المستمرة وبين شطحات الـ GPS أو المشي على الأقدام
     posHistory.push({ lat, lng, t: now, distFromGarage });
-    if (posHistory.length > 12) {
+    if (posHistory.length > 15) {
       posHistory.shift();
     }
+    let isSustainedWindowCarSpeed = false;
     for (let i = 0; i < posHistory.length - 1; i++) {
       const pt = posHistory[i];
       const dtWindow = (now - pt.t) / 1000;
-      if (dtWindow >= 2 && dtWindow <= 15) {
+      if (dtWindow >= 2.5 && dtWindow <= 25) {
         const dWindow = haversine(pt.lat, pt.lng, lat, lng);
         const radialOutward = distFromGarage - pt.distFromGarage;
-        if (dWindow >= 12 && radialOutward >= 6) {
+
+        // حساب إجمالي طول المسار المقطوع للتأكد من أن الحركة في اتجاه حقيقي وليست تذبذباً عشوائياً للـ GPS
+        let pathLength = 0;
+        for (let k = i; k < posHistory.length - 1; k++) {
+          pathLength += haversine(
+            posHistory[k].lat,
+            posHistory[k].lng,
+            posHistory[k + 1].lat,
+            posHistory[k + 1].lng,
+          );
+        }
+        const straightness = pathLength > 0 ? dWindow / pathLength : 1;
+
+        if (
+          dWindow >= 14 &&
+          straightness >= 0.72 &&
+          (radialOutward >= 8 || distFromGarage > GEOFENCE_RADIUS_METERS + 25)
+        ) {
           const windowSpeed = dWindow / dtWindow;
           if (windowSpeed < 55) {
             speed = Math.max(speed, windowSpeed);
+            // إذا تحركت المركبة مسافة >= 18 متر خلال >= 3.5 ثانية بسرعة سيارة في مسار مستقيم، فهذه حركة سيارة مؤكدة 100%
+            if (dtWindow >= 3.5 && dWindow >= 18 && windowSpeed >= SPEED_THRESHOLD_MPS) {
+              isSustainedWindowCarSpeed = true;
+            }
           }
         }
       }
     }
+
     const distFromLastSent = haversine(lat, lng, lastSentLat, lastSentLng);
     const isOverDistance = distFromGarage > GEOFENCE_RADIUS_METERS;
     const isConfirmedSpeed = speed >= SPEED_THRESHOLD_MPS;
-    // 🚨 الإنذار ينطلق فقط إذا ابتعد العميل عن نطاق الـ 50 متر وتحرك بسرعة السيارة (isConfirmedSpeed)
+
+    // 🚨 الإنذار ينطلق فقط إذا ابتعد العميل عن نطاق الـ 50 متر وتحرك بسرعة السيارة (>= 3 م/ث أي ~11 كم/س)
     // أما إذا مشى على قدميه لمشواره (سرعة المشي < 3 م/ث) فلا ينطلق الإنذار مهما ابتعد
     if (isOverDistance && isConfirmedSpeed) {
       consecutiveBreachCount++;
       if (!breachStartTime) {
         breachStartTime = now;
       }
-      if ((now - breachStartTime >= CAR_GRACE_MS) || consecutiveBreachCount >= 2) {
+      // انطلاق فوري من أول لقطة إذا كانت سرعة الدوبلر أو نافذة المسار المستقيم مؤكدة، أو بعد قراءتين متتاليتين
+      const isInstantConfirmed =
+        (isDopplerCarSpeed && distFromGarage > GEOFENCE_RADIUS_METERS + 3) ||
+        isSustainedWindowCarSpeed;
+
+      if (
+        isInstantConfirmed ||
+        now - breachStartTime >= CAR_GRACE_MS ||
+        consecutiveBreachCount >= 2
+      ) {
         if (!isCurrentlyOutside) {
           isCurrentlyOutside = true;
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -809,7 +908,7 @@ export function startShieldGPS(params: {
         pos.coords.accuracy,
       ),
       handleGPSError,
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 7000 },
     );
   }, FALLBACK_INTERVAL_MS);
   visibilityHandler = () => {
