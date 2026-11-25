@@ -68,9 +68,9 @@ const BRAND = {
   slateMuted: '#94a3b8',
   border: 'rgba(255, 255, 255, 0.08)',
 };
-const AUTO_START_RADIUS_M = 50;
-const AUTO_START_LEAVE_RADIUS_M = 65; // Hysteresis buffer لمنع إلغاء العداد بسبب تذبذب الـ GPS
-const MANUAL_SHIELD_MAX_RADIUS_M = 150;
+const AUTO_START_RADIUS_M = 150;
+const AUTO_START_LEAVE_RADIUS_M = 180; // Hysteresis buffer لمنع إلغاء العداد بسبب تذبذب الـ GPS
+const MANUAL_SHIELD_MAX_RADIUS_M = 180;
 const AUTO_START_STABILITY_MS = 3 * 60 * 1000;
 const SHIELD_AUTO_FEE = 7;
 const GPS_POLL_INTERVAL_MS = 1000;
