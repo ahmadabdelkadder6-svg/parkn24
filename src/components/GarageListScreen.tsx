@@ -860,23 +860,23 @@ export default function GarageListScreen() {
                 </div>
               </div>
               <div
-                className="mt-2.5 py-2 px-3 rounded-xl flex items-center justify-between gap-2 shadow-sm transition-transform active:scale-[0.99]"
+                className="mt-2.5 py-2.5 px-3.5 rounded-xl flex items-center justify-between gap-2 shadow-md transition-transform active:scale-[0.99]"
                 style={{
-                  background: BRAND.green,
-                  border: `1.5px solid ${BRAND.greenDark}`,
-                  color: BRAND.blueDeep
+                  background: BRAND.greenDark,
+                  border: `1.5px solid ${BRAND.green}`,
+                  color: '#ffffff',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)'
                 }}
               >
-                <span className="text-[11px] sm:text-xs font-black flex items-center gap-1.5">
+                <span className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
                   <span>👆</span>
                   <span>اضغط هنا لتأكيد الجراج والانتقال لشاشة التوجيه</span>
                 </span>
-                <span className="text-[10px] sm:text-[11px] font-black px-2 py-0.5 rounded-lg bg-slate-950/15 text-slate-950 shrink-0 flex items-center gap-1">
+                <span className="text-[11px] sm:text-xs font-black px-2.5 py-1 rounded-lg bg-black/25 text-white border border-white/30 shrink-0 flex items-center gap-1">
                   <span>ابدأ المسار</span>
-                  <Navigation size={12} className="rotate-45 stroke-[2.5]" />
+                  <Navigation size={13} className="rotate-45 text-white stroke-[3]" />
                 </span>
-              </div>
-            </div>
+              </div>            </div>
           </div>
         )}
         {/* زر الركنة البديلة */}
