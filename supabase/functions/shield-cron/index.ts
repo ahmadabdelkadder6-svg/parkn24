@@ -7,6 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 };
 
+// ─── ⏱️ ثوابت التوقيت ───
+const ALERT_INTERVAL_MS = 30 * 60 * 1000; // 30 دقيقة بين كل تنبيه والتاني (بالوقت الفعلي)
+const MAX_ALERTS_PER_SESSION = 2;
+
 // ─── 🛡️ بنك الـ 30 إشعار الأمني التكتيكي للرادار ───
 interface TacticalAlert {
   type: 'status' | 'warning' | 'resolved' | 'report';
@@ -49,10 +53,10 @@ const ALERT_POOL: TacticalAlert[] = [
 
 // دالة اختيار إشعار عشوائي مع إمكانية استبعاد عنوان سابق لمنع التكرار
 function pickTacticalAlert(excludeTitle?: string): TacticalAlert {
-  const pool = excludeTitle 
+  const pool = excludeTitle
     ? ALERT_POOL.filter(a => a.title !== excludeTitle)
     : ALERT_POOL;
-  
+
   const randomIndex = Math.floor(Math.random() * pool.length);
   return pool[randomIndex];
 }
@@ -132,11 +136,13 @@ serve(async (req) => {
 
     for (const [, sessions] of phoneGroups) {
       if (sessions.length <= 1) continue;
+
       sessions.sort((a, b) => {
         const ta = a.last_gps_at ? new Date(a.last_gps_at).getTime() : 0;
         const tb = b.last_gps_at ? new Date(b.last_gps_at).getTime() : 0;
         return tb - ta;
       });
+
       for (let i = 1; i < sessions.length; i++) {
         await supabase
           .from('shield_sessions')
@@ -151,8 +157,10 @@ serve(async (req) => {
     for (const shield of shields) {
       const alertCount = shield.alert_count || 0;
       const tick = shield.fake_tick || 0;
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
 
-      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/2, tick=${tick}`);
+      console.log(`\n🛡️ Shield: ${shield.phone}, alerts=${alertCount}/${MAX_ALERTS_PER_SESSION}, tick=${tick}`);
 
       // 1. التحقق من وجود مفاتيح الـ Push
       if (!shield.push_endpoint || !shield.push_p256dh || !shield.push_auth) {
@@ -172,43 +180,62 @@ serve(async (req) => {
         await supabase
           .from('shield_sessions')
           .update({
-            ended_at: new Date().toISOString(),
+            ended_at: nowIso,
             push_endpoint: null,
             push_p256dh: null,
             push_auth: null,
           })
           .eq('session_id', shield.session_id);
+
         console.log(`🔒 Session ${shield.session_id} ended — shield auto-closed`);
         totalSkipped++;
         continue;
       }
 
       // 3. حد أقصى صارم: إشعارين فقط لكل جلسة ركن
-      if (alertCount >= 2) {
+      if (alertCount >= MAX_ALERTS_PER_SESSION) {
         console.log('⏭️ Max 2 alerts reached — keeping shield active without push');
         totalSkipped++;
         continue;
       }
 
-      // 4. توقيت الإرسال:
-      // - الإشعار الأول (alertCount == 0): بعد 30 دقيقة (6 ticks بمعدل 5 دقائق لكل tick)
-      // - الإشعار الثاني (alertCount == 1): بعد 30 دقيقة أخرى من الأول (6 ticks = علامة الـ 60 دقيقة)
-      const requiredTicks = 6;
-      const newTick = tick + 1;
+      // 4. توقيت الإرسال بالوقت الفعلي (مش بعدد مرات تشغيل الـ cron):
+      // - المرجع = last_tick_at (وقت آخر تنبيه اتبعت أو اتحاول)، ولو مفيش يبقى created_at
+      // - التنبيه بيتبعت لما الفرق يوصل 30 دقيقة، بغض النظر عن تردد الـ cron
+      const anchorRaw = shield.last_tick_at || shield.created_at;
+      const anchorMs = anchorRaw ? new Date(anchorRaw).getTime() : NaN;
 
-      if (newTick < requiredTicks) {
+      if (Number.isNaN(anchorMs)) {
+        // مفيش مرجع زمني للجلسة: نبدأ العد من دلوقتي
         await supabase
           .from('shield_sessions')
-          .update({ fake_tick: newTick })
+          .update({ last_tick_at: nowIso })
           .eq('session_id', shield.session_id);
-        console.log(`⏳ Progress: Tick ${newTick}/${requiredTicks} for alert #${alertCount + 1}`);
+
+        console.log('🕒 No time anchor — initialized last_tick_at');
+        totalSkipped++;
+        continue;
+      }
+
+      const elapsedMs = nowMs - anchorMs;
+
+      if (elapsedMs < ALERT_INTERVAL_MS) {
+        const elapsedMin = Math.floor(elapsedMs / 60000);
+        const remainingMin = Math.ceil((ALERT_INTERVAL_MS - elapsedMs) / 60000);
+
+        // fake_tick بيفضل عداد للمتابعة بس، مش هو اللي بيحدد التوقيت
+        await supabase
+          .from('shield_sessions')
+          .update({ fake_tick: tick + 1 })
+          .eq('session_id', shield.session_id);
+
+        console.log(`⏳ Waiting: ${elapsedMin} min elapsed, ${remainingMin} min left for alert #${alertCount + 1}`);
         totalSkipped++;
         continue;
       }
 
       // 5. حان وقت الإرسال -> اختيار إشعار مميز
       const chosenAlert = pickTacticalAlert();
-
       const payload = JSON.stringify({
         title: chosenAlert.title,
         body: chosenAlert.body,
@@ -224,7 +251,8 @@ serve(async (req) => {
       });
 
       try {
-        console.log(`🚀 Sending tactical alert ${alertCount + 1}/2 to ${shield.phone}: ${chosenAlert.title}`);
+        console.log(`🚀 Sending tactical alert ${alertCount + 1}/${MAX_ALERTS_PER_SESSION} to ${shield.phone}: ${chosenAlert.title}`);
+
         await webpush.sendNotification(
           {
             endpoint: shield.push_endpoint,
@@ -245,15 +273,19 @@ serve(async (req) => {
           .update({
             alert_count: alertCount + 1,
             fake_tick: 0,
+            last_tick_at: nowIso,
           })
           .eq('session_id', shield.session_id);
-
       } catch (err: any) {
         console.error('❌ Push Failed:', err.statusCode, err.message);
 
+        // نفس السلوك القديم: الفشل يأجل المحاولة 30 دقيقة تانية
         await supabase
           .from('shield_sessions')
-          .update({ fake_tick: 0 })
+          .update({
+            fake_tick: 0,
+            last_tick_at: nowIso,
+          })
           .eq('session_id', shield.session_id);
 
         // إذا انتهت صلاحية الاشتراك أو تم حظره من المتصفح (410 Gone / 404 Not Found)
@@ -266,12 +298,14 @@ serve(async (req) => {
               push_auth: null,
             })
             .eq('session_id', shield.session_id);
+
           console.log(`🧹 Cleaned expired push subscription for ${shield.phone}`);
         }
       }
     }
 
     console.log(`\n📊 Execution Summary: sent=${totalSent}, skipped=${totalSkipped}`);
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -281,7 +315,6 @@ serve(async (req) => {
       }),
       { headers: corsHeaders }
     );
-
   } catch (err) {
     console.error('❌ Fatal Cron Error:', err);
     return new Response(JSON.stringify({ error: String(err) }), {
