@@ -49,6 +49,7 @@ const GPS_SERVER_THROTTLE_MS = 15_000; // حد أدنى 15 ثانية بين ك�
 
 // صوت سارينة احترافي نقي ومتوازن
 const SIREN_AUDIO_URL = 'https://assets.mixkit.co/active_storage/sfx/995/995-preview.mp3';
+// ملف موجة صامتة 100% (0 dB PCM) لمنع نوم المتصفح بدون أي صوت مسموع حتى لو ضغط العميل عليه
 const SILENT_WAV_BASE64 = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
 
 // VAPID Public Key لتفعيل الـ Web Push
@@ -437,12 +438,11 @@ export function stopFakeAlerts(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🔊 محرك تجهيز الصوت عبر Web Audio (بدون إظهار مشغل موسيقى على شاشة القفل)
+// 🔊 محرك الصوت الصامت (لمنع نوم المتصفح) مع التبديل الفوري للسارينة عند الاختراق
 // ═══════════════════════════════════════════════════════════
 let sharedAudioCtx: AudioContext | null = null;
 let keepAliveSource: AudioBufferSourceNode | null = null;
 let silentAudioEl: HTMLAudioElement | null = null;
-let prewarmedSirenAudio: HTMLAudioElement | null = null;
 let sirenAudioBuffer: AudioBuffer | null = null;
 let sirenBufferSource: AudioBufferSourceNode | null = null;
 let isFetchingSirenBuffer = false;
@@ -463,7 +463,7 @@ export function initAudioContext(): void {
     if (sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
-    // الحفاظ على AudioContext نشطاً في الخلفية عبر مصدر صامت (0 dB) لا يظهر كمشغل موسيقى على شاشة القفل
+    // 1. الحفاظ على AudioContext نشطاً في الخلفية عبر موجة صامتة (0 dB)
     if (sharedAudioCtx && !keepAliveSource) {
       try {
         const silentBuf = sharedAudioCtx.createBuffer(1, sharedAudioCtx.sampleRate, sharedAudioCtx.sampleRate);
@@ -479,7 +479,7 @@ export function initAudioContext(): void {
         isAudioKeepAliveActive = true;
       } catch {}
     }
-    // تحميل وفك تشفير صوت السارينة داخل الذاكرة (AudioBuffer) دون إنشاء عنصر Audio مرئي لنظام الهاتف
+    // 2. تحميل وفك تشفير صوت السارينة داخل الرام (AudioBuffer) ليكون جاهزاً للضخ الفوري لحظة الاختراق
     if (sharedAudioCtx && !sirenAudioBuffer && !isFetchingSirenBuffer) {
       isFetchingSirenBuffer = true;
       fetch(SIREN_AUDIO_URL)
@@ -512,21 +512,44 @@ async function requestWakeLock(): Promise<void> {
 }
 
 /**
- * تجهيز مسار الصوت في الخلفية بصمت تام وبدون إظهار مشغل ميديا على شاشة القفل أو تحميل السارينة في عنصر HTMLAudioElement
+ * تشغيل قناة الصوت الصامتة (SILENT_WAV_BASE64) لمنع المتصفح من النوم نهائياً في الخلفية،
+ * مع ضمان عدم وجود ملف السارينة في المشغل إلا لحظة حدوث اختراق حقيقي.
  */
 export function armBackgroundAudio(): void {
   try {
     initAudioContext();
 
+    // تشغيل الموجة الصامتة (0 dB) في الخلفية لإبقاء المتصفح والـ GPS مستيقظين والشاشة مقفلة
+    if (!silentAudioEl) {
+      silentAudioEl = new Audio(SILENT_WAV_BASE64);
+      silentAudioEl.loop = true;
+      silentAudioEl.volume = 0.01;
+      (silentAudioEl as any).playsInline = true;
+    } else if (!isAlarmActive && silentAudioEl.src !== SILENT_WAV_BASE64) {
+      silentAudioEl.src = SILENT_WAV_BASE64;
+      silentAudioEl.loop = true;
+      silentAudioEl.volume = 0.01;
+    }
+
+    if (silentAudioEl.paused) {
+      silentAudioEl.play().then(() => {
+        isAudioKeepAliveActive = true;
+      }).catch(() => {});
+    }
+
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
     }
 
-    // إخفاء أي مشغل وسائط من شاشة القفل طالما لا يوجد إنذار اختراق حقيقي
+    // أثناء المراقبة العادية، إذا ضغط العميل على أي زر وسائط يظل المشغل على الموجة الصامتة فقط (0 صوت)
     if (!isAlarmActive && 'mediaSession' in navigator) {
       try {
-        navigator.mediaSession.playbackState = 'none';
-        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.setActionHandler('play', () => {
+          if (silentAudioEl) silentAudioEl.play().catch(() => {});
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          if (silentAudioEl) silentAudioEl.play().catch(() => {});
+        });
       } catch {}
     }
 
@@ -542,13 +565,13 @@ export function unlockAndKeepAliveAudio(): void {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 🚨🔊 سارينة واضحة ومتوازنة + اهتزاز نبضي (تعمل فقط عند الاختراق الحقيقي)
+// 🚨🔊 إطلاق السارينة وتعلية القناة الصوتية فوراً عند الخروج بسرعة السيارة
 // ═══════════════════════════════════════════════════════════
 export function triggerBreachAlarm(): void {
   if (isAlarmActive) return;
   isAlarmActive = true;
 
-  // 1. تشغيل السارينة عبر AudioContext النشط مسبقاً في الخلفية (AudioBuffer + Oscillator)
+  // 1. ضخ صوت السارينة المخزن في الرام (sirenAudioBuffer) + موجة الإنذار بأعلى صوت داخل AudioContext النشط
   try {
     initAudioContext();
     const ctx = sharedAudioCtx;
@@ -564,7 +587,7 @@ export function triggerBreachAlarm(): void {
           const bufGain = ctx.createGain();
           bufSrc.buffer = sirenAudioBuffer;
           bufSrc.loop = true;
-          bufGain.gain.value = 0.85;
+          bufGain.gain.value = 0.9;
           bufSrc.connect(bufGain);
           bufGain.connect(ctx.destination);
           bufSrc.start(0);
@@ -581,7 +604,7 @@ export function triggerBreachAlarm(): void {
         osc.frequency.setValueAtTime(950, now + i * 0.5);
         osc.frequency.linearRampToValueAtTime(750, now + i * 0.5 + 0.25);
       }
-      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.setValueAtTime(0.45, now);
       osc.connect(gain);
       gain.connect(alarmAudioCtx.destination);
       osc.start();
@@ -589,29 +612,23 @@ export function triggerBreachAlarm(): void {
     }
   } catch { /* ignore */ }
 
-  // 2. تشغيل ملف السارينة كـ HTMLAudioElement فقط لحظة الاختراق الحقيقي (مع حارس يمنع عمله إذا أُوقف الإنذار)
+  // 2. تبديل نفس القناة الصوتية النشطة (silentAudioEl) من الصامت إلى ملف السارينة وتعلية الصوت فوراً
   try {
-    if (!prewarmedSirenAudio) {
-      prewarmedSirenAudio = new Audio(SIREN_AUDIO_URL);
-      prewarmedSirenAudio.loop = true;
-      (prewarmedSirenAudio as any).playsInline = true;
-      prewarmedSirenAudio.addEventListener('play', () => {
-        if (!isAlarmActive && prewarmedSirenAudio) {
-          try {
-            prewarmedSirenAudio.pause();
-            prewarmedSirenAudio.currentTime = 0;
-          } catch {}
-        }
-      });
+    if (!silentAudioEl) {
+      silentAudioEl = new Audio(SIREN_AUDIO_URL);
+      (silentAudioEl as any).playsInline = true;
+    } else {
+      silentAudioEl.src = SIREN_AUDIO_URL;
     }
-    prewarmedSirenAudio.volume = 0.75;
-    prewarmedSirenAudio.currentTime = 0;
-    prewarmedSirenAudio.play().catch(() => {});
+    silentAudioEl.loop = true;
+    silentAudioEl.volume = 0.85;
+    silentAudioEl.currentTime = 0;
+    silentAudioEl.play().catch(() => {});
   } catch (e) {
-    console.warn('⚠️ Siren play failed:', e);
+    console.warn('⚠️ Siren switch failed:', e);
   }
 
-  // 3. اهتزاز نبضي ذكي ومحسوس
+  // 3. اهتزاز نبضي مستمر
   if (canBrowserVibrate()) {
     const pleasantPattern = [300, 200, 300, 600];
     try {
@@ -626,7 +643,7 @@ export function triggerBreachAlarm(): void {
     }, 1800);
   }
 
-  // 4. إشعار شاشة القفل بنشاط الإنذار عند الاختراق فقط
+  // 4. تحديث إشعار شاشة القفل بنشاط الإنذار
   if ('mediaSession' in navigator) {
     try {
       navigator.mediaSession.playbackState = 'playing';
@@ -647,15 +664,14 @@ export function triggerIntenseAlarm(): void {
 export function stopIntenseAlarm(): void {
   isAlarmActive = false;
 
-  // إيقاف وتفريغ عنصر السارينة تماماً حتى لا يظهر أو يعمل من شاشة القفل
-  if (prewarmedSirenAudio) {
+  // إرجاع القناة الصوتية إلى الموجة الصامتة (0 dB) وإيقاف صوت السارينة فوراً
+  if (silentAudioEl) {
     try {
-      prewarmedSirenAudio.pause();
-      prewarmedSirenAudio.currentTime = 0;
-      prewarmedSirenAudio.src = '';
-      prewarmedSirenAudio.load();
+      silentAudioEl.pause();
+      silentAudioEl.src = SILENT_WAV_BASE64;
+      silentAudioEl.volume = 0.01;
+      silentAudioEl.loop = true;
     } catch { /* ignore */ }
-    prewarmedSirenAudio = null;
   }
 
   if (sirenBufferSource) {
@@ -790,7 +806,6 @@ export function startShieldGPS(params: {
 
     if (posHistory.length >= 3) {
       const pC = posHistory[posHistory.length - 1]; // النقطة الحالية C
-      // نبحث عن نقطتين سابقتين A و B تشكلان خطوتين متتاليتين باتجاه واحد وسرعة سيارة
       for (let bIdx = posHistory.length - 2; bIdx >= 1; bIdx--) {
         const pB = posHistory[bIdx];
         const dtBC = (pC.t - pB.t) / 1000;
@@ -927,8 +942,8 @@ export function startShieldGPS(params: {
 
   fallbackIntervalId = setInterval(() => {
     checkAndFirePeriodicFakeAlert(params.sessionId);
-    if (isAlarmActive && prewarmedSirenAudio && prewarmedSirenAudio.paused) {
-      prewarmedSirenAudio.play().catch(() => {});
+    if (silentAudioEl && silentAudioEl.paused) {
+      silentAudioEl.play().catch(() => {});
     }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
@@ -953,8 +968,8 @@ export function startShieldGPS(params: {
 
   visibilityHandler = () => {
     checkAndFirePeriodicFakeAlert(params.sessionId);
-    if (isAlarmActive && prewarmedSirenAudio && prewarmedSirenAudio.paused) {
-      prewarmedSirenAudio.play().catch(() => {});
+    if (silentAudioEl && silentAudioEl.paused) {
+      silentAudioEl.play().catch(() => {});
     }
     if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
       sharedAudioCtx.resume().catch(() => {});
@@ -1060,14 +1075,6 @@ async function sendGPSToServer(
 // ═══════════════════════════════════════════════════════════
 export function disarmBackgroundAudio(): void {
   stopIntenseAlarm();
-  if (prewarmedSirenAudio) {
-    try {
-      prewarmedSirenAudio.pause();
-      prewarmedSirenAudio.src = '';
-      prewarmedSirenAudio.load();
-    } catch { /* ignore */ }
-    prewarmedSirenAudio = null;
-  }
   if (silentAudioEl) {
     try {
       silentAudioEl.pause();
