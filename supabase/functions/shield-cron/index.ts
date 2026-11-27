@@ -4,7 +4,7 @@ import webpush from 'npm:web-push@3.6.7';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-cron-secret',
 };
 
 // ─── ⏱️ ثوابت التوقيت ───
@@ -56,7 +56,6 @@ function pickTacticalAlert(excludeTitle?: string): TacticalAlert {
   const pool = excludeTitle
     ? ALERT_POOL.filter(a => a.title !== excludeTitle)
     : ALERT_POOL;
-
   const randomIndex = Math.floor(Math.random() * pool.length);
   return pool[randomIndex];
 }
@@ -64,6 +63,16 @@ function pickTacticalAlert(excludeTitle?: string): TacticalAlert {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  // ─── 🔐 حماية الـ cron بسر (x-cron-secret) ───
+  const CRON_SECRET = Deno.env.get('CRON_SECRET') || '';
+  const providedSecret = req.headers.get('x-cron-secret') || '';
+  if (!CRON_SECRET || providedSecret !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: corsHeaders,
+    });
   }
 
   try {
@@ -136,13 +145,11 @@ serve(async (req) => {
 
     for (const [, sessions] of phoneGroups) {
       if (sessions.length <= 1) continue;
-
       sessions.sort((a, b) => {
         const ta = a.last_gps_at ? new Date(a.last_gps_at).getTime() : 0;
         const tb = b.last_gps_at ? new Date(b.last_gps_at).getTime() : 0;
         return tb - ta;
       });
-
       for (let i = 1; i < sessions.length; i++) {
         await supabase
           .from('shield_sessions')
@@ -186,7 +193,6 @@ serve(async (req) => {
             push_auth: null,
           })
           .eq('session_id', shield.session_id);
-
         console.log(`🔒 Session ${shield.session_id} ended — shield auto-closed`);
         totalSkipped++;
         continue;
@@ -211,7 +217,6 @@ serve(async (req) => {
           .from('shield_sessions')
           .update({ last_tick_at: nowIso })
           .eq('session_id', shield.session_id);
-
         console.log('🕒 No time anchor — initialized last_tick_at');
         totalSkipped++;
         continue;
@@ -222,13 +227,11 @@ serve(async (req) => {
       if (elapsedMs < ALERT_INTERVAL_MS) {
         const elapsedMin = Math.floor(elapsedMs / 60000);
         const remainingMin = Math.ceil((ALERT_INTERVAL_MS - elapsedMs) / 60000);
-
         // fake_tick بيفضل عداد للمتابعة بس، مش هو اللي بيحدد التوقيت
         await supabase
           .from('shield_sessions')
           .update({ fake_tick: tick + 1 })
           .eq('session_id', shield.session_id);
-
         console.log(`⏳ Waiting: ${elapsedMin} min elapsed, ${remainingMin} min left for alert #${alertCount + 1}`);
         totalSkipped++;
         continue;
@@ -276,6 +279,7 @@ serve(async (req) => {
             last_tick_at: nowIso,
           })
           .eq('session_id', shield.session_id);
+
       } catch (err: any) {
         console.error('❌ Push Failed:', err.statusCode, err.message);
 
@@ -298,7 +302,6 @@ serve(async (req) => {
               push_auth: null,
             })
             .eq('session_id', shield.session_id);
-
           console.log(`🧹 Cleaned expired push subscription for ${shield.phone}`);
         }
       }
@@ -315,6 +318,7 @@ serve(async (req) => {
       }),
       { headers: corsHeaders }
     );
+
   } catch (err) {
     console.error('❌ Fatal Cron Error:', err);
     return new Response(JSON.stringify({ error: String(err) }), {
